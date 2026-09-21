@@ -1,22 +1,37 @@
-# Room Comfort Monitor
+# Plant Monitor
 
-A Raspberry Pi device that combines temperature/humidity measurements with
-occupancy measurements to identify uncomfortable or moisture-prone room
-conditions while someone is actually using the room.
+A breadboard-free Raspberry Pi device that combines capacitive soil-moisture
+measurements with ambient-light measurements to learn how a specific plant's
+soil dries under different light exposure and provide evidence-based watering
+advice.
 
-This repository is an early CS 370 term-project scaffold. Hardware support and
-the final analysis logic are intentionally not implemented yet.
+This repository is an early CS 370 term-project scaffold. Hardware capture,
+storage, supervision, and final decision logic are intentionally not presented
+as complete before the team tests the real components.
 
-## Proposed hardware
+## Planned hardware
 
-- Raspberry Pi with a 40-pin header
-- DHT22 temperature/humidity sensor
-- HC-SR501 PIR occupancy sensor
+1. Raspberry Pi 3 Model A+ **or** Raspberry Pi Zero 2 W with a soldered header
+2. Adafruit STEMMA Soil Sensor (I2C capacitive moisture sensor)
+3. Adafruit BH1750 light sensor
+4. Two STEMMA QT cables
+5. One STEMMA QT-to-GPIO cable with **female sockets** at the Pi end
 
-The DHT22 counts as one physical sensor even though it reports two values. The
-PIR is the required second physical sensor. The planned decision pipeline will
-combine rolling temperature/humidity trends with occupancy state instead of
-treating the sensors as two unrelated demonstrations.
+No breadboard is required. The Pi cable connects to the GPIO header, and the
+two sensors share the I2C bus through their STEMMA QT connectors. See
+[`docs/hardware-plan.md`](docs/hardware-plan.md) before connecting power.
+
+## Why the sensors cooperate
+
+The project does not treat moisture and light as unrelated displays. It records
+daily light exposure, soil moisture, and the rate of moisture loss. The analysis
+will compare drying behavior under different accumulated-light conditions and
+verify that watering caused a plausible moisture increase.
+
+The initial project claim is deliberately narrow:
+
+> For one calibrated plant and soil setup, identify unusual drying behavior and
+> estimate whether watering will probably be needed soon.
 
 ## Build and test
 
@@ -30,35 +45,34 @@ make memcheck
 Run the development simulator:
 
 ```bash
-./build/comfort-monitor --simulate
+./build/plant-monitor --simulate
 ```
 
-All simulated output is labeled `SIMULATED`; the graded soak test and live demo
-must use live sensors.
+All generated input and output is labeled `SIMULATED`. The graded soak and live
+demonstration must use live sensors.
 
 ## Repository map
 
-- `src/` - systems core in C17
+- `src/` - C17 systems core and early analysis scaffold
 - `include/` - public C headers
 - `tests/` - automated tests
-- `docs/problem-memo.md` - M1 problem memo draft
+- `docs/hardware-plan.md` - breadboard-free parts and wiring plan
+- `docs/problem-memo.md` - M1 problem-memo draft
 - `docs/design.md` - M2 design-document outline
 - `transcripts/` - raw per-partner Claude Code `.jsonl` copies
 - `promptlogs/` - one `PROMPTLOG.md` per partner
-- `scripts/` - deployment and soak-test helpers (to be added)
 
 ## Milestone status
 
-- [x] Repository initialized
-- [x] `CLAUDE.md` initialized
-- [ ] Real user and exact problem confirmed
-- [ ] Partner names and ownership map filled in
-- [ ] Ordered hardware confirmed in the documentation
+- [x] Repository and `CLAUDE.md` initialized
+- [x] Breadboard-free hardware plan selected
+- [ ] Exact Raspberry Pi choice recorded
+- [ ] Real user and specific plant confirmed
+- [ ] Partner names and ownership map completed
+- [ ] Components electrically verified
 - [ ] M1 memo finalized
-- [ ] Each partner's raw `.jsonl` files copied into their own folder
+- [ ] Each partner's raw M1 `.jsonl` files copied into their own folder
 
-## Before the first push
-
-Search for every `TODO(team)` marker and replace it with accurate team details.
-Do not claim hardware, measurements, or user interviews that have not occurred.
+Search for `TODO(team)` before submission. Never claim hardware results, user
+interviews, calibration, or measurements that have not occurred.
 

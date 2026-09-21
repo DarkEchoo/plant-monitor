@@ -1,4 +1,4 @@
-# Room Comfort Monitor: team rules
+# Plant Monitor: team rules
 
 ## Commands
 
@@ -8,49 +8,59 @@
 - Valgrind: `make memcheck`
 - Clean: `make clean`
 - A change is DONE only when build, tests, and applicable sanitizer checks pass.
-  Show the real command output.
+  Show the actual command output.
+
+## Hardware contract
+
+- Target: Raspberry Pi 3 Model A+ or Zero 2 W with soldered GPIO header.
+- Sensors: Adafruit STEMMA Soil Sensor and Adafruit BH1750 light sensor.
+- Connection: breadboard-free shared I2C bus using two STEMMA QT cables and one
+  STEMMA QT-to-GPIO cable with female sockets at the Pi end.
+- Confirm the cable labels and sensor documentation before wiring. Never infer
+  pin function from wire color alone.
+- Power off before attaching, removing, or rearranging connections.
+- Real sensor values must include units, timestamps, validity, and error status.
 
 ## Hard constraints
 
 - The product makes no external network calls. A future LAN-only interface is
-  permitted, but the device must work with the network disconnected.
+  permitted, but the device must operate with networking disconnected.
 - No LLM API, cloud inference, or pretrained model may run in the product.
 - Product intelligence must be code the team wrote and can defend.
-- The project uses at least two physically distinct, cooperating sensors.
-- Replayed or generated data must be labeled `SIMULATED` or `REPLAYED` in every
-  output, log, report, and demonstration where it appears.
-- Every daemon must be supervisable: clean exit status, no orphaned file
-  descriptors after restart, and a heartbeat within 60 seconds of startup.
-- Check every allocation and handle and log every system-call error path.
+- The two physical sensors must feed one analysis pipeline; they may not be two
+  unrelated demonstrations.
+- Simulated or replayed data must be visibly labeled in every output and log.
+- Every daemon must be supervisable, with clean exit status, no orphaned file
+  descriptors, and a heartbeat within 60 seconds of startup.
+- Check allocations and handle and log every system-call error path.
 - Never weaken, skip, or delete a test merely to make the suite pass.
-- Never invent measurements, logs, sensor output, or test results.
+- Never invent measurements, calibration results, logs, or test outcomes.
 
 ## Ownership
 
-- TODO(team): Partner 1 owns `src/sensors/` and hardware-facing capture code.
+- TODO(team): Partner 1 owns `src/sensors/` and I2C capture.
 - TODO(team): Partner 2 owns `src/storage/` and `src/analysis/`.
 - Shared and reviewed by both: supervisor, interface, tests, and documentation.
-- Ownership means first authorship and defense responsibility, not exclusive
-  permission. Each milestone diff receives both agent and human partner review.
+- Ownership means first authorship and defense responsibility, not exclusivity.
 
 ## Style
 
 - Systems core: C17 with `-Wall -Wextra -Werror -pedantic`; no VLAs.
 - Use cleanup labels for functions managing multiple resources.
-- Keep functions focused and name units in identifiers where practical.
+- Include measurement units in names where practical.
 - Python is allowed only in `tools/` or a future interface directory. No graded
   operating-system mechanism may be hidden in Python.
 - Make the smallest relevant change; do not refactor unrelated code.
 
 ## Workflow
 
-- Explore the relevant files before proposing edits.
-- For multi-file or algorithmic changes, write a plan and wait for team approval.
+- Explore relevant files before editing.
+- For multi-file or algorithmic changes, plan first and wait for team approval.
 - Prefer tests before implementation and evidence over assertions.
-- For hardware bugs, record direct evidence such as `dmesg`, timing captures,
-  `/proc/interrupts`, and exact logs before proposing a fix.
+- For hardware bugs, record direct evidence such as `i2cdetect`, `dmesg`, exact
+  error logs, and wiring observations before proposing a fix.
 - Commit only from a green state with messages in the form `M<n>: <what>`.
 - Each partner works from a separate clone and personal Claude Code sessions.
 - Copy raw `.jsonl` files from `~/.claude/projects/` at every M1-M5 milestone.
-- Keep 6-10 annotated episodes in each partner's `PROMPTLOG.md` by M5.
+- Each milestone diff receives fresh-context agent review and human partner review.
 

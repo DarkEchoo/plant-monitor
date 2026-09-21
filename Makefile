@@ -1,7 +1,7 @@
 CC ?= cc
 CFLAGS := -std=c17 -Wall -Wextra -Werror -pedantic -Iinclude
 BUILD_DIR := build
-TARGET := $(BUILD_DIR)/comfort-monitor
+TARGET := $(BUILD_DIR)/plant-monitor
 TEST_TARGET := $(BUILD_DIR)/test_analysis
 
 .PHONY: all test asan memcheck clean
@@ -32,4 +32,3 @@ memcheck: $(TEST_TARGET)
 
 clean:
 	rm -rf $(BUILD_DIR)
-

@@ -2,39 +2,44 @@
 
 #include <stddef.h>
 
-double comfort_score(const sensor_snapshot *snapshot)
+plant_status analyze_plant_snapshot(const plant_snapshot *snapshot)
 {
-    double humidity_distance;
-    double temperature_distance;
-    double score;
-
-    if (snapshot == NULL) {
-        return -1.0;
+    if (snapshot == NULL || snapshot->moisture_raw < 0.0 ||
+        snapshot->light_lux < 0.0 ||
+        snapshot->light_exposure_lux_hours < 0.0) {
+        return PLANT_STATUS_INVALID;
     }
 
-    humidity_distance = snapshot->relative_humidity_pct - 45.0;
-    if (humidity_distance < 0.0) {
-        humidity_distance = -humidity_distance;
+    /*
+     * These development-only boundaries make the scaffold testable. They are
+     * not calibrated plant-care claims and must be replaced using real data.
+     * Both moisture trend and accumulated light influence the result.
+     */
+    if (snapshot->moisture_raw < 350.0 &&
+        snapshot->moisture_change_per_hour < -8.0 &&
+        snapshot->light_exposure_lux_hours > 10000.0) {
+        return PLANT_STATUS_WATER_SOON;
     }
 
-    temperature_distance = snapshot->temperature_c - 22.0;
-    if (temperature_distance < 0.0) {
-        temperature_distance = -temperature_distance;
+    if (snapshot->moisture_change_per_hour < -2.0) {
+        return PLANT_STATUS_DRYING;
     }
 
-    score = 100.0 - (humidity_distance * 1.5) - (temperature_distance * 4.0);
+    return PLANT_STATUS_STABLE;
+}
 
-    /* Occupancy affects whether current conditions need immediate attention. */
-    if (snapshot->occupied == 0) {
-        score += 5.0;
+const char *plant_status_name(plant_status status)
+{
+    switch (status) {
+    case PLANT_STATUS_STABLE:
+        return "STABLE";
+    case PLANT_STATUS_DRYING:
+        return "DRYING";
+    case PLANT_STATUS_WATER_SOON:
+        return "WATER_SOON";
+    case PLANT_STATUS_INVALID:
+    default:
+        return "INVALID";
     }
-
-    if (score < 0.0) {
-        return 0.0;
-    }
-    if (score > 100.0) {
-        return 100.0;
-    }
-    return score;
 }
 
