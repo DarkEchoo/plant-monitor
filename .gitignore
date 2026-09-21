@@ -1,0 +1,7 @@
+/build/
+*.o
+*.log
+*.csv
+core
+core.*
+
