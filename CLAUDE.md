@@ -12,14 +12,16 @@
 
 ## Hardware contract
 
-- Target: Raspberry Pi 3 Model B+ with soldered GPIO header.
-- Sensors: Adafruit STEMMA Soil Sensor and Adafruit BH1750 light sensor.
-- Connection: shared I2C bus using two STEMMA QT cables and one
-  STEMMA QT-to-GPIO cable with female sockets at the Pi end.
-- Confirm the cable labels and sensor documentation before wiring. Never infer
-  pin function from wire color alone.
-- Power off before attaching, removing, or rearranging connections.
-- Real sensor values must include units, timestamps, validity, and error status.
+- Target: Raspberry Pi 3 Model B+ with its soldered 40-pin GPIO header.
+- Soil sensor: Adafruit STEMMA Soil Sensor with a JST-PH 2 mm connector.
+- Light sensor: Adafruit BH1750 with STEMMA QT/JST-SH connectors.
+- Pi connection: one Adafruit 4397 STEMMA QT-to-female-GPIO cable.
+- Sensor connection: one Adafruit 4424 JST-SH-to-JST-PH adapter cable.
+- Physical chain: Raspberry Pi -> BH1750 -> soil sensor.
+- Both sensors share the Raspberry Pi's I2C bus and use 3.3 V power.
+- Power off the Raspberry Pi before connecting or disconnecting hardware.
+- Confirm labels and physical PINs instead of trusting wire color alone.
+- Real readings must include timestamps, units, validity, and error status.
 
 ## Hard constraints
 
