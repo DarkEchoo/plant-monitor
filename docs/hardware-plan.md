@@ -17,15 +17,15 @@ No breadboard or external analog-to-digital converter is planned.
 ## Physical connection plan
 
 ```text
-Raspberry Pi GPIO header
-        |
-        | STEMMA QT-to-GPIO cable
-        v
-Adafruit STEMMA Soil Sensor
-        |
-        | STEMMA QT cable
-        v
-Adafruit BH1750 light sensor
+Raspberry Pi 3 Model B+ GPIO header
+                |
+                | Adafruit 4397
+                v
+      BH1750 light sensor
+                |
+                | Adafruit 4424
+                v
+       STEMMA soil sensor
 ```
 
 One of the two ordinary STEMMA QT cables is a spare/replacement unless the final
