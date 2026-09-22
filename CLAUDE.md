@@ -38,8 +38,8 @@
 
 ## Ownership
 
-- TODO(team): Partner 1 owns `src/sensors/` and I2C capture.
-- TODO(team): Partner 2 owns `src/storage/` and `src/analysis/`.
+- Jesse `src/sensors/` and I2C capture.
+- Michael owns `src/storage/` and `src/analysis/`.
 - Shared and reviewed by both: supervisor, interface, tests, and documentation.
 - Ownership means first authorship and defense responsibility, not exclusivity.
 
