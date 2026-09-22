@@ -14,8 +14,8 @@ as complete before the team tests the real components.
 1. Raspberry Pi 3 Model B+ with a soldered header
 2. Adafruit STEMMA Soil Sensor (I2C capacitive moisture sensor)
 3. Adafruit BH1750 light sensor
-4. Two STEMMA QT cables
-5. One STEMMA QT-to-GPIO cable with **female sockets** at the Pi end
+4. One STEMMA QT-to-GPIO female-socket cable
+5. One STEMMA QT-to-STEMMA adapter cable
 
 No breadboard is required. The Pi cable connects to the GPIO header, and the
 two sensors share the I2C bus through their STEMMA QT connectors. See
