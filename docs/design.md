@@ -36,12 +36,13 @@ sample rates, record format, retention, batching, and power-loss behavior.
 
 ## Constraints and substitutions
 
-- Breadboard omitted in favor of keyed STEMMA QT connections.
-- One shared I2C bus makes wiring simple but is a shared failure domain.
-- The soil reading is treated as a calibrated relative value, not a universally
-  accurate moisture percentage.
-- Raspberry Pi Zero 2 W is acceptable but slower to compile on than larger Pis.
-- Every simulated or replayed record remains explicitly labeled.
+- The breadboard is omitted by using keyed JST-SH and JST-PH cables.
+- The Raspberry Pi connects to the BH1750 through an Adafruit 4397 cable.
+- The BH1750 connects to the soil sensor through an Adafruit 4424 adapter cable.
+- Both sensors share one I2C bus, which simplifies wiring but creates a shared
+  failure point.
+- The Raspberry Pi 3 Model B+ was selected for its soldered GPIO header and
+  easier development experience.
 
 ## Evaluation plan
 
