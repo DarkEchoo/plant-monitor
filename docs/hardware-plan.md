@@ -4,7 +4,7 @@
 
 | Quantity | Component | Requirement |
 |---:|---|---|
-| 1 | Raspberry Pi 3 Model A+ or Zero 2 W | Soldered 40-pin male GPIO header |
+| 1 | Raspberry Pi 3 Model B+ | Soldered 40-pin male GPIO header |
 | 1 | Adafruit STEMMA Soil Sensor | I2C capacitive moisture sensor |
 | 1 | Adafruit BH1750 light sensor | STEMMA QT/I2C version |
 | 2 | STEMMA QT cables | Board-to-board sensor connection |
