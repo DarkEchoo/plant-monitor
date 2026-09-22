@@ -12,7 +12,7 @@
 
 ## Hardware contract
 
-- Target: Raspberry Pi 3 Model A+ or Zero 2 W with soldered GPIO header.
+- Target: Raspberry Pi 3 Model B+ with soldered GPIO header.
 - Sensors: Adafruit STEMMA Soil Sensor and Adafruit BH1750 light sensor.
 - Connection: breadboard-free shared I2C bus using two STEMMA QT cables and one
   STEMMA QT-to-GPIO cable with female sockets at the Pi end.
