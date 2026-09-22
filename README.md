@@ -1,8 +1,8 @@
 # Plant Monitor
 
-A breadboard-free Raspberry Pi device that combines capacitive soil-moisture
+Raspberry Pi device that combines capacitive soil-moisture
 measurements with ambient-light measurements to learn how a specific plant's
-soil dries under different light exposure and provide evidence-based watering
+soil dries under different light exposure and provides evidence-based watering
 advice.
 
 This repository is an early CS 370 term-project scaffold. Hardware capture,
@@ -17,7 +17,7 @@ as complete before the team tests the real components.
 4. One STEMMA QT-to-GPIO female-socket cable
 5. One STEMMA QT-to-STEMMA adapter cable
 
-No breadboard is required. The Pi cable connects to the GPIO header, and the
+The Pi cable connects to the GPIO header, and the
 two sensors share the I2C bus through their STEMMA QT connectors. See
 [`docs/hardware-plan.md`](docs/hardware-plan.md) before connecting power.
 
@@ -56,7 +56,7 @@ demonstration must use live sensors.
 - `src/` - C17 systems core and early analysis scaffold
 - `include/` - public C headers
 - `tests/` - automated tests
-- `docs/hardware-plan.md` - breadboard-free parts and wiring plan
+- `docs/hardware-plan.md` - wiring plan
 - `docs/problem-memo.md` - M1 problem-memo draft
 - `docs/design.md` - M2 design-document outline
 - `transcripts/` - raw per-partner Claude Code `.jsonl` copies
@@ -65,7 +65,7 @@ demonstration must use live sensors.
 ## Milestone status
 
 - [x] Repository and `CLAUDE.md` initialized
-- [x] Breadboard-free hardware plan selected
+- [x] Raspberry Pi 3 Model B+ selected
 - [ ] Exact Raspberry Pi choice recorded
 - [ ] Real user and specific plant confirmed
 - [ ] Partner names and ownership map completed
