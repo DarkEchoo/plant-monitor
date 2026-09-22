@@ -2,7 +2,7 @@
 
 ## The user
 
-TODO(team): Name the real plant owner and the specific indoor plant beside which
+Jesse: Name the real plant owner and the specific indoor plant beside which
 the device will be installed. Confirm the problem with that person before M1.
 
 ## The problem
@@ -10,7 +10,7 @@ the device will be installed. Confirm the problem with that person before M1.
 The user does not know when the plant will need water until visible symptoms or
 very dry soil appear. A fixed watering schedule ignores changes in light and the
 resulting drying rate, potentially causing overwatering or underwatering.
-TODO(team): Add observed frequency and concrete consequences from the user.
+Michael: Add observed frequency and concrete consequences from the user.
 
 ## Why a device
 
