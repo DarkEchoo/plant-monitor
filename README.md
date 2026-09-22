@@ -11,7 +11,7 @@ as complete before the team tests the real components.
 
 ## Planned hardware
 
-1. Raspberry Pi 3 Model A+ **or** Raspberry Pi Zero 2 W with a soldered header
+1. Raspberry Pi 3 Model B+ with a soldered header
 2. Adafruit STEMMA Soil Sensor (I2C capacitive moisture sensor)
 3. Adafruit BH1750 light sensor
 4. Two STEMMA QT cables
