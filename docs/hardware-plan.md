@@ -46,16 +46,20 @@ cross-check, not proof of pin function.
 
 ## Assembly checklist
 
-1. Shut down and disconnect power from the Pi.
-2. Confirm both sensor boards are the I2C/STEMMA QT versions.
-3. Confirm the Pi-end cable has female sockets for the male GPIO header.
-4. Match 3.3 V, GND, SDA, and SCL using labels and physical pin numbers.
-5. Connect the second sensor through a free STEMMA QT connector.
-6. Keep the electronics outside the soil; insert only the sensing portion to
-   the depth permitted by the sensor documentation.
-7. Power on and enable I2C in Raspberry Pi configuration.
-8. Record the real output of `i2cdetect -y 1` in the hardware bring-up notes.
-9. Confirm each device independently before running the combined pipeline.
+1. Shut down the Raspberry Pi and disconnect its power supply.
+2. Connect the JST-SH end of cable 4397 to one BH1750 STEMMA QT port.
+3. Connect the female sockets from cable 4397 to the Raspberry Pi:
+   - Red to physical pin 1 for 3.3 V
+   - Black to physical pin 6 for ground
+   - Blue to physical pin 3 for SDA
+   - Yellow to physical pin 5 for SCL
+4. Connect the JST-SH end of cable 4424 to the BH1750's second port.
+5. Connect the JST-PH end of cable 4424 to the soil sensor.
+6. Confirm every connection using the board and cable labels.
+7. Keep the Raspberry Pi and cable connections protected from water.
+8. Power on the Raspberry Pi and enable I2C.
+9. Run `i2cdetect -y 1` and save the actual output.
+10. Confirm that each sensor can be detected and read.
 
 ## Placement plan
 
