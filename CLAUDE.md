@@ -14,7 +14,7 @@
 
 - Target: Raspberry Pi 3 Model B+ with soldered GPIO header.
 - Sensors: Adafruit STEMMA Soil Sensor and Adafruit BH1750 light sensor.
-- Connection: breadboard-free shared I2C bus using two STEMMA QT cables and one
+- Connection: shared I2C bus using two STEMMA QT cables and one
   STEMMA QT-to-GPIO cable with female sockets at the Pi end.
 - Confirm the cable labels and sensor documentation before wiring. Never infer
   pin function from wire color alone.
