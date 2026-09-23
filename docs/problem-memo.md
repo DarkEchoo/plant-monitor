@@ -2,8 +2,8 @@
 
 ## The user
 
-Jesse: Name the real plant owner and the specific indoor plant beside which
-the device will be installed. Confirm the problem with that person before M1.
+Jesse: Will provide code along with help via video to help install if needed.
+Michael: Will provide code, device, and plant for testing and troubleshooting.
 
 ## The problem
 
@@ -44,5 +44,5 @@ than claiming universal plant-care accuracy.
 The largest risk is that raw soil-sensor readings may drift with soil placement,
 salinity, and plant conditions. The team will narrow the claim to one fixed
 plant and pot, record placement, calibrate wet and dry reference ranges, and
-report limitations rather than presenting the reading as universal percentage.
+report limitations rather than presenting the reading as a universal percentage.
 
