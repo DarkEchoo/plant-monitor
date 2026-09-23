@@ -6,11 +6,14 @@ Jesse: Will provide code along with help via video to help install if needed.
 
 Michael: Will provide code, device, and plant for testing and troubleshooting.
 
-## The problem
+The user does not know whether the plant's current location provides enough
+light throughout the day. A location may appear bright during one observation
+while still providing too little accumulated light over several hours or days.
+The device will record light exposure over time and use soil-moisture readings
+as additional context about the plant's growing conditions.
 
-The user does not know when the plant will need water until visible symptoms or
-very dry soil appear. A fixed watering schedule ignores changes in light and the
-resulting drying rate, potentially causing overwatering or underwatering.
+TODO(team): Add the selected plant's light requirements and observations from
+the real user.
 Michael: Add observed frequency and concrete consequences from the user.
 
 ## Why a device
@@ -24,12 +27,13 @@ sunlight for too long.
 
 ## The sensors
 
-An Adafruit STEMMA capacitive soil sensor measures relative soil moisture, while
-a physically separate BH1750 measures ambient illuminance (sunlight). They feed one shared
-pipeline: the system calculates moisture-loss rate and compares it with recent
-accumulated light exposure. It also checks whether watering produces a plausible
-moisture increase. The project is calibrated for one plant-and-soil setup rather
-than claiming universal plant-care accuracy.
+An Adafruit BH1750 measures ambient illuminance, while an Adafruit STEMMA
+capacitive soil sensor measures relative soil moisture. The system records
+light readings over time to estimate daily light exposure and compares that
+exposure with the selected plant's documented needs. Soil moisture provides
+additional context and helps identify possible watering problems. The project
+will be calibrated for one plant, pot, and location rather than claiming
+universal plant-care accuracy.
 
 ## The mechanisms
 
@@ -44,7 +48,7 @@ than claiming universal plant-care accuracy.
 ## The risk
 
 The largest risk is that raw soil-sensor readings may drift with plant placement,
-artificial light, different plants, different plots (if it outgrows it's current pot)
+artificial light, different plants, different pots (if it outgrows its current pot)
 and plant conditions. We will keep the plant in one fixed pot, record
 placement, calibrate wet and dry reference ranges, and
 report limitations rather than presenting the reading as a universal percentage.
