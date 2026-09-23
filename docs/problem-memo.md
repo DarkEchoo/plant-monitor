@@ -33,12 +33,13 @@ than claiming universal plant-care accuracy.
 
 ## The mechanisms
 
-1. **D - custom storage layer:** An append-only log with batching and an explicit
-   synchronization policy will preserve sensor history while limiting SD-card
-   writes. Recovery after an interrupted write will be measured.
-2. **E - multi-process architecture:** Sensor capture processes will be isolated
-   from an analysis hub over Unix-domain sockets. Killing one process must cause
-   logged degradation and supervised recovery without silently inventing data.
+1. **D - custom storage layer:** We’ll save sensor readings in an append-only log
+   and write them to the SD card in batches. We’ll also test what happens if power
+   is lost during a write and check whether the log can recover.
+4. **E - multi-process architecture:** Separate processes will collect sensor data
+   and send it to an analysis process through Unix-domain sockets. If one process
+   crashes, the system should log the gap and restart it without making up missing
+   readings.
 
 ## The risk
 
