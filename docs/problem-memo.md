@@ -43,8 +43,9 @@ than claiming universal plant-care accuracy.
 
 ## The risk
 
-The largest risk is that raw soil-sensor readings may drift with soil placement,
-salinity, and plant conditions. The team will narrow the claim to one fixed
-plant and pot, record placement, calibrate wet and dry reference ranges, and
+The largest risk is that raw soil-sensor readings may drift with plant placement,
+artificial light, different plants, different plots (if it outgrows it's current pot)
+and plant conditions. We will keep the plant in one fixed pot, record
+placement, calibrate wet and dry reference ranges, and
 report limitations rather than presenting the reading as a universal percentage.
 
