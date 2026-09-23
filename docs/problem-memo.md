@@ -1,55 +1,67 @@
-# Problem memo -- TODO(team name) (TODO(partner 1), TODO(partner 2))
+# Problem memo -- Plant Monitor (Jesse and Michael)
 
 ## The user
 
-Jesse: Will provide code along with help via video to help install if needed.
+Michael is the primary user. He owns a plant that will be kept in a consistent
+indoor location during testing. He will provide the plant and select the
+location where the device will be tested. Jesse and Michael will install,
+program, and troubleshoot the device together.
 
-Michael: Will provide code, device, and plant for testing and troubleshooting.
+## The problem
 
-The user does not know whether the plant's current location provides enough
-light throughout the day. A location may appear bright during one observation
-while still providing too little accumulated light over several hours or days.
-The device will record light exposure over time and use soil-moisture readings
-as additional context about the plant's growing conditions.
+Michael cannot easily determine whether his plant receives enough light
+throughout the day. The location may appear bright when he checks it but still
+receive too little accumulated light over several hours or days. This makes it
+difficult to decide whether the plant should be moved to a brighter location.
 
-TODO(team): Add the selected plant's light requirements and observations from
-the real user.
-Michael: Add observed frequency and concrete consequences from the user.
+He currently checks the plant once a week, but these brief observations do not
+represent its total daily light exposure. Insufficient light could result in
+poor growth or declining plant health. Soil moisture will also be monitored so
+that a watering problem is not mistaken for a lighting problem.
 
 ## Why a device
 
-The soil and plant must be measured continuously where they are located. A phone
-does not measure soil moisture or remain beside the plant overnight. The device
-must observe slow changes unattended and preserve history even when no one is
-checking it. Sometimes, people might be too busy to keep track of their plant, 
-so this will act as a reminder if the plant is underwatered or has been without
-sunlight for too long.
+The plant’s light and soil conditions must be measured throughout the day,
+including when nobody is present. A phone does not measure soil moisture, is not
+kept beside the plant continuously, and would not provide consistent readings
+from the same position.
+
+An always-on Raspberry Pi can collect measurements over several hours or days,
+preserve their history, and report whether the plant’s current location appears
+to provide enough light.
 
 ## The sensors
 
-An Adafruit BH1750 measures ambient illuminance, while an Adafruit STEMMA
-capacitive soil sensor measures relative soil moisture. The system records
-light readings over time to estimate daily light exposure and compares that
-exposure with the selected plant's documented needs. Soil moisture provides
-additional context and helps identify possible watering problems. The project
-will be calibrated for one plant, pot, and location rather than claiming
-universal plant-care accuracy.
+An Adafruit BH1750 will measure ambient illuminance in lux. An Adafruit STEMMA
+capacitive soil sensor will measure relative soil moisture.
+
+The sensors will cooperate via a single plant-care analysis pipeline. The system
+will calculate accumulated light exposure over time and compare it with the
+selected plant’s documented light needs. Soil-moisture trends will provide
+additional context, allowing the system to distinguish a possible lighting
+problem from a possible watering problem.
 
 ## The mechanisms
 
-1. **D - custom storage layer:** We’ll save sensor readings in an append-only log
-   and write them to the SD card in batches. We’ll also test what happens if power
-   is lost during a write and check whether the log can recover.
-4. **E - multi-process architecture:** Separate processes will collect sensor data
-   and send it to an analysis process through Unix-domain sockets. If one process
-   crashes, the system should log the gap and restart it without making up missing
-   readings.
+1. **D — Custom storage layer:** The system will store timestamped sensor
+   readings in an append-only log using batched writes. Recovery testing will
+   determine whether valid records can be preserved when power is lost during a
+   write.
+
+2. **E — Multi-process architecture:** Separate processes will collect light
+   and soil-moisture readings and send them to an analysis process through
+   Unix-domain sockets. A supervisor will detect and restart a failed process
+   while allowing the healthy sensor process to continue.
 
 ## The risk
 
-The largest risk is that raw soil-sensor readings may drift with plant placement,
-artificial light, different plants, different pots (if it outgrows its current pot)
-and plant conditions. We will keep the plant in one fixed pot, record
-placement, calibrate wet and dry reference ranges, and
-report limitations rather than presenting the reading as a universal percentage.
+The largest risk is that the BH1750 measures visible illuminance in lux rather
+than photosynthetically active radiation, so its readings are only an estimate
+of the light useful to the plant. Sensor position, artificial lighting, and an
+incorrectly selected light requirement could produce misleading advice.
 
+To reduce this risk, the team will select one plant species, document its light
+requirements, place the sensor near the plant’s leaves, keep its orientation
+consistent, and compare measurements from brighter and darker locations. The
+soil sensor will also be calibrated for one fixed plant, pot, and soil mixture
+rather than reported as a universal moisture percentage.
