@@ -9,6 +9,7 @@ plant_status analyze_plant_snapshot(const plant_snapshot *snapshot)
         !isfinite(snapshot->moisture_raw) ||
         !isfinite(snapshot->light_lux) ||
         !isfinite(snapshot->light_exposure_lux_hours) ||
+        !isfinite(snapshot->moisture_change_per_hour) ||
         snapshot->moisture_raw < 0.0 ||
         snapshot->light_lux < 0.0 ||
         snapshot->light_exposure_lux_hours < 0.0) {
