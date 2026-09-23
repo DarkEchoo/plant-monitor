@@ -10,9 +10,12 @@
 | 1 | Adafruit 4397 cable | JST-SH to female GPIO sockets |
 | 1 | Adafruit 4424 cable | JST-SH to JST-PH adapter |
 | 1 | MicroSD card | Raspberry Pi OS storage |
-| 1 | Raspberry Pi power supply | Compatible 5 V supply |
+| 1 | Raspberry Pi Micro-USB power supply | High-quality 5 V, 2.5 A supply |
 
-No breadboard or external analog-to-digital converter is planned.
+The Raspberry Pi must remain connected to its Micro-USB power supply while
+monitoring. It has no built-in battery. The Pi supplies 3.3 V to both sensors
+through the I2C wiring, so the sensors do not require separate power supplies.
+Shut down Raspberry Pi OS before disconnecting power.
 
 ## Physical connection plan
 
