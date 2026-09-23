@@ -28,10 +28,6 @@ Raspberry Pi 3 Model B+ GPIO header
        STEMMA soil sensor
 ```
 
-One of the two ordinary STEMMA QT cables is a spare/replacement unless the final
-physical routing or adapter configuration needs both. Confirm the number and
-type of connectors on the exact purchased revisions before ordering.
-
 ## Pi header signals
 
 | Signal | BCM name | Physical pin |
@@ -58,7 +54,9 @@ cross-check, not proof of pin function.
 6. Confirm every connection using the board and cable labels.
 7. Keep the Raspberry Pi and cable connections protected from water.
 8. Power on the Raspberry Pi and enable I2C.
-9. Run `i2cdetect -y 1` and save the actual output.
+9. Run `i2cdetect -y 1` and save the actual output. The expected addresses are
+   normally `0x23` for the BH1750 and `0x36` for the soil sensor, but the team
+   must verify the addresses reported by the actual hardware.
 10. Confirm that each sensor can be detected and read.
 
 ## Placement plan
@@ -71,8 +69,21 @@ cross-check, not proof of pin function.
 
 ## Calibration plan
 
-The soil value will initially remain a raw relative measurement. Record a dry
-reference, a normal-watered reference, and repeated readings without moving the
-probe. Do not label the value as a percentage until the team can justify that
-conversion for the selected plant and soil.
+### Soil sensor
+
+The soil reading will initially remain a raw relative measurement. Record a dry
+reference, a normally watered reference, and repeated readings without moving
+the probe. Do not label the value as a percentage until the team can justify
+that conversion for the selected plant, pot, and soil.
+
+### Light sensor
+
+Place the BH1750 at approximately the same height and location as the plant's
+leaves. Record readings throughout several days without moving the sensor, then
+repeat the test in brighter and darker locations.
+
+The BH1750 measures illuminance in lux rather than photosynthetically active
+radiation. The device will therefore report an estimate of whether the plant's
+location provides enough light, not an exact biological measurement of how much
+usable light the plant receives.
 
