@@ -55,6 +55,7 @@
 - Python is allowed only in `tools/` or a future interface directory. No graded
   operating-system mechanism may be hidden in Python.
 - Make the smallest relevant change; do not refactor unrelated code.
+- Mark each function and label each new function to ensure a clean workflow.
 
 ## Workflow
 
