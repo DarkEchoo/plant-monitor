@@ -46,8 +46,9 @@ Each record will contain:
 * Recent soil-moisture change
 * Current plant-care recommendation
 
-TODO(team): Decide the final sampling rates, record format, retention period, write-batching policy, and power-loss behavior.
-
+TODO(team): Decide the final sampling rates, record format, retention period,
+write-batching policy, and exact recovery procedure after an unexpected power
+loss. The device requires continuous external power and has no built-in battery.
 ## Analysis plan
 
 The BH1750 will measure the amount of light reaching the plant throughout the day. The system will combine these readings over time instead of making a decision from one reading. This will allow it to estimate daily light exposure and identify repeated low-light days.
