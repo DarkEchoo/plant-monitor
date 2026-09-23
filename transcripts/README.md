@@ -14,5 +14,5 @@ transcripts/
   partner-2/M2/*.jsonl
 ```
 
-Each partner should work in a separate clone and personal Claude Code sessions.
+Each partner will work from their own personal computers and personal Claude Code sessions.
 
