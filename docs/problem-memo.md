@@ -17,12 +17,14 @@ Michael: Add observed frequency and concrete consequences from the user.
 The soil and plant must be measured continuously where they are located. A phone
 does not measure soil moisture or remain beside the plant overnight. The device
 must observe slow changes unattended and preserve history even when no one is
-checking it.
+checking it. Sometimes, people might be too busy to keep track of their plant, 
+so this will act as a reminder if the plant is underwatered or has been without
+sunlight for too long.
 
 ## The sensors
 
 An Adafruit STEMMA capacitive soil sensor measures relative soil moisture, while
-a physically separate BH1750 measures ambient illuminance. They feed one shared
+a physically separate BH1750 measures ambient illuminance (sunlight). They feed one shared
 pipeline: the system calculates moisture-loss rate and compares it with recent
 accumulated light exposure. It also checks whether watering produces a plausible
 moisture increase. The project is calibrated for one plant-and-soil setup rather
