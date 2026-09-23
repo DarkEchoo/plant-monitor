@@ -15,12 +15,13 @@
 - Target: Raspberry Pi 3 Model B+ with its soldered 40-pin GPIO header.
 - Soil sensor: Adafruit STEMMA Soil Sensor with a JST-PH 2 mm connector.
 - Light sensor: Adafruit BH1750 with STEMMA QT/JST-SH connectors.
-- Pi connection: one Adafruit 4397 STEMMA QT-to-female-GPIO cable.
-- Sensor connection: one Adafruit 4424 JST-SH-to-JST-PH adapter cable.
-- Physical chain: Raspberry Pi -> BH1750 -> soil sensor.
+- Planned cables: two Adafruit 4397 cables and one Adafruit 4424
+  STEMMA QT-to-GPIO cable.
 - Both sensors share the Raspberry Pi's I2C bus and use 3.3 V power.
+- Verify the connector path and pin labels against the actual components
+  before connecting them. Do not assume a cable fits based on its name.
 - Power off the Raspberry Pi before connecting or disconnecting hardware.
-- Confirm labels and physical PINs instead of trusting wire color alone.
+- Confirm labels and physical pins instead of trusting wire color alone.
 - Real readings must include timestamps, units, validity, and error status.
 
 ## Hard constraints
@@ -29,8 +30,9 @@
   permitted, but the device must operate with networking disconnected.
 - No LLM API, cloud inference, or pretrained model may run in the product.
 - Product intelligence must be code the team wrote and can defend.
-- The two physical sensors must feed one analysis pipeline; they may not be two
-  unrelated demonstrations.
+- Light readings help determine whether the chosen plant receives enough
+  sunlight. Soil-moisture readings help determine whether it needs water.
+  Both sensors feed one analysis pipeline and one set of plant-care advice.
 - Simulated or replayed data must be visibly labeled in every output and log.
 - Every daemon must be supervisable, with clean exit status, no orphaned file
   descriptors, and a heartbeat within 60 seconds of startup.
@@ -40,7 +42,7 @@
 
 ## Ownership
 
-- Jesse `src/sensors/` and I2C capture.
+- Jesse owns `src/sensors/` and I2C capture.
 - Michael owns `src/storage/` and `src/analysis/`.
 - Shared and reviewed by both: supervisor, interface, tests, and documentation.
 - Ownership means first authorship and defense responsibility, not exclusivity.
@@ -65,4 +67,3 @@
 - Each partner works from a separate clone and personal Claude Code sessions.
 - Copy raw `.jsonl` files from `~/.claude/projects/` at every M1-M5 milestone.
 - Each milestone diff receives fresh-context agent review and human partner review.
-
