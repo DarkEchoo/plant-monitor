@@ -13,11 +13,13 @@ storage, supervision, and final decision logic are not complete yet.
 1. Raspberry Pi 3 Model B+ with a soldered header
 2. Adafruit STEMMA Soil Sensor (I2C capacitive moisture sensor)
 3. Adafruit BH1750 light sensor
-4. One STEMMA QT-to-GPIO cable
-5. Two STEMMA QT cables
+4. One Adafruit 4397 JST-SH-to-female-socket cable
+5. One Adafruit 4424 JST-SH-to-JST-PH adapter cable
+6. One high-quality 5 V, 2.5 A Micro-USB power supply
 
-The GPIO cable connects the Pi to the first sensor, and the STEMMA QT cables
-connect the sensors on the same I2C bus. See
+The Adafruit 4397 cable connects the Raspberry Pi GPIO header to the BH1750.
+The Adafruit 4424 cable connects the BH1750 to the soil sensor, allowing both
+sensors to share the Raspberry Pi's I2C bus.
 [`docs/hardware-plan.md`](docs/hardware-plan.md) before connecting power.
 
 ## Why the sensors cooperate
@@ -66,7 +68,6 @@ demonstration must use live sensors.
 
 - [x] Repository and `CLAUDE.md` initialized
 - [x] Raspberry Pi 3 Model B+ selected
-- [ ] Exact Raspberry Pi choice recorded
 - [ ] Real user and specific plant confirmed
 - [ ] Partner names and ownership map completed
 - [ ] Components electrically verified
