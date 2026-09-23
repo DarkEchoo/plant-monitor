@@ -90,10 +90,6 @@ The evaluation will include:
 
 TODO(team): Set numerical targets and document the method used for each measurement.
 
-## Ownership map
-
-TODO(team): Replace the ownership placeholders in `CLAUDE.md` with both partners’ names and responsibilities.
-
 ## AI-use plan
 
 Claude Code may help us plan components, understand Linux and I2C APIs, review changes, and develop tests. It will not run on the device or make decisions for the product. The product source will not contain an external network client or connect to an AI service.
