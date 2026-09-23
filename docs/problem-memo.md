@@ -2,7 +2,7 @@
 
 ## The user
 
-Jesse: Will provide code along with help via video to help install if needed.
+Jesse: Will provide code along with help via video to help install if needed. |
 Michael: Will provide code, device, and plant for testing and troubleshooting.
 
 ## The problem
