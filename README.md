@@ -30,8 +30,8 @@ verify that watering caused a plausible moisture increase.
 
 The initial project claim is deliberately narrow:
 
-> For one calibrated plant and soil setup, identify unusual drying behavior and
-> estimate whether watering will probably be needed soon.
+> For one calibrated plant and soil setup, identify if the plant is receiving enough
+> sunlight and water.
 
 ## Build and test
 
