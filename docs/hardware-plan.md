@@ -7,7 +7,7 @@
 | 1 | Raspberry Pi 3 Model B+ | Soldered 40-pin GPIO header |
 | 1 | Adafruit STEMMA Soil Sensor | I2C sensor with JST-PH 2 mm connector |
 | 1 | Adafruit BH1750 light sensor | I2C sensor with two STEMMA QT connectors |
-| 1 | Adafruit 4397 cable | JST-SH to female GPIO sockets |
+| 2 | Adafruit 4397 cable | JST-SH to female GPIO sockets |
 | 1 | Adafruit 4424 cable | JST-SH to JST-PH adapter |
 | 1 | MicroSD card | Raspberry Pi OS storage |
 | 1 | Raspberry Pi power supply | Compatible 5 V supply |
