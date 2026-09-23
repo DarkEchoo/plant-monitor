@@ -15,8 +15,10 @@
 - Target: Raspberry Pi 3 Model B+ with its soldered 40-pin GPIO header.
 - Soil sensor: Adafruit STEMMA Soil Sensor with a JST-PH 2 mm connector.
 - Light sensor: Adafruit BH1750 with STEMMA QT/JST-SH connectors.
-- Planned cables: two Adafruit 4397 cables and one Adafruit 4424
-  STEMMA QT-to-GPIO cable.
+- Planned cables: one Adafruit 4397 JST-SH-to-female-socket cable and one
+  Adafruit 4424 JST-SH-to-JST-PH adapter cable.
+- The Raspberry Pi uses a high-quality 5 V, 2.5 A Micro-USB power supply and
+  must remain powered while monitoring.
 - Both sensors share the Raspberry Pi's I2C bus and use 3.3 V power.
 - Verify the connector path and pin labels against the actual components
   before connecting them. Do not assume a cable fits based on its name.
