@@ -1,36 +1,37 @@
 # Plant Monitor
 
-Raspberry Pi device that combines soil-moisture content
-measurements along with light measurements to learn how a specific plant's
-soil dries under different light exposure and provides evidence-based watering
-advice.
+Raspberry Pi device that combines soil-moisture measurements with light
+measurements to help determine whether a specific plant is receiving enough
+sunlight and water.
 
 This repository is for the CS-370 term-project scaffold. Hardware capture,
 storage, supervision, and final decision logic are not complete yet.
+
 
 ## Planned hardware
 
 1. Raspberry Pi 3 Model B+ with a soldered header
 2. Adafruit STEMMA Soil Sensor (I2C capacitive moisture sensor)
 3. Adafruit BH1750 light sensor
-4. One STEMMA QT-to-GPIO female-socket cable
-5. One STEMMA QT-to-STEMMA adapter cable
+4. One STEMMA QT-to-GPIO cable
+5. Two STEMMA QT cables
 
-The Pi cable connects to the GPIO header, and the
-two sensors share the I2C bus through their STEMMA QT connectors. See
+The GPIO cable connects the Pi to the first sensor, and the STEMMA QT cables
+connect the sensors on the same I2C bus. See
 [`docs/hardware-plan.md`](docs/hardware-plan.md) before connecting power.
 
 ## Why the sensors cooperate
 
-The project does not treat moisture and light as unrelated displays. It records
-daily light exposure, soil moisture, and the rate of moisture loss. The analysis
-will compare drying behavior under different light conditions and
-verify that watering caused a plausible moisture increase.
+The project records light exposure and soil moisture for the same plant.
+The analysis will compare the plant's measured light exposure with its
+sunlight needs and use the soil readings to help determine when it may need
+water. Together, these measurements give the user a clearer picture of the
+plant's growing conditions.
 
 The initial project claim is deliberately narrow:
 
-> For one calibrated plant and soil setup, identify if the plant is receiving enough
-> sunlight and water.
+> For one plant with known sunlight needs and a calibrated soil sensor,
+> identify when it may not be receiving enough sunlight or water.
 
 ## Build and test
 
