@@ -1,13 +1,12 @@
 # Plant Monitor
 
-Raspberry Pi device that combines capacitive soil-moisture
-measurements with ambient-light measurements to learn how a specific plant's
+Raspberry Pi device that combines soil-moisture content
+measurements along with light measurements to learn how a specific plant's
 soil dries under different light exposure and provides evidence-based watering
 advice.
 
-This repository is an early CS 370 term-project scaffold. Hardware capture,
-storage, supervision, and final decision logic are intentionally not presented
-as complete before the team tests the real components.
+This repository is for the CS-370 term-project scaffold. Hardware capture,
+storage, supervision, and final decision logic are not complete yet.
 
 ## Planned hardware
 
@@ -25,7 +24,7 @@ two sensors share the I2C bus through their STEMMA QT connectors. See
 
 The project does not treat moisture and light as unrelated displays. It records
 daily light exposure, soil moisture, and the rate of moisture loss. The analysis
-will compare drying behavior under different accumulated-light conditions and
+will compare drying behavior under different light conditions and
 verify that watering caused a plausible moisture increase.
 
 The initial project claim is deliberately narrow:
