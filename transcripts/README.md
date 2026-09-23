@@ -8,10 +8,10 @@ Suggested layout:
 
 ```text
 transcripts/
-  partner-1/M1/*.jsonl
-  partner-1/M2/*.jsonl
-  partner-2/M1/*.jsonl
-  partner-2/M2/*.jsonl
+  Jesse/M1/*.jsonl
+  Michael/M2/*.jsonl
+  Jesse/M1/*.jsonl
+  Michael/M2/*.jsonl
 ```
 
 Each partner will work from their own personal computers and personal Claude Code sessions.
