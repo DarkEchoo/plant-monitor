@@ -14,7 +14,7 @@ Planned processes:
 
 The main goal is to determine whether the plant’s current location provides enough light. Soil moisture will provide additional context so the device can distinguish between low-light conditions and possible watering problems.
 
-TODO(team): Add the final sampling rates and label every IPC and storage flow.
+TODO: Add the final sampling rates and label every IPC and storage flow.
 
 ## Mechanism mapping
 
