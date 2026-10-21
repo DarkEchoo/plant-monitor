@@ -26,6 +26,9 @@
  * inside it are not refused here.
  *
  * Backend contract:
+ * - The ops table provides all four callbacks. A wrapper whose callback is
+ *   NULL returns INVALID_ARGUMENT without calling it and leaves the device
+ *   unchanged (a close cannot release what it cannot call).
  * - OS_ERROR always carries the nonzero errno of the failed call. A
  *   condition with no errno (such as read() returning 0) is reported as
  *   OK with the actual byte count, which the wrapper turns into

@@ -16,6 +16,20 @@ static const uint8_t cmd_bytes[] = {0x0F, 0x10};
 static const uint8_t other_cmd_bytes[] = {0x0F, 0x11};
 static const uint8_t data_bytes[] = {0x02, 0x64};
 
+/* Arbitrary non-default mock state, to show a failed open never writes it. */
+static const i2c_mock mock_sentinel = {NULL, 7, 3, 11, 1, 2};
+
+/* mock_is_sentinel: true if every field still holds mock_sentinel's value. */
+static int mock_is_sentinel(const i2c_mock *mock)
+{
+    return mock->steps == mock_sentinel.steps &&
+           mock->step_count == mock_sentinel.step_count &&
+           mock->next_step == mock_sentinel.next_step &&
+           mock->waited_us == mock_sentinel.waited_us &&
+           mock->mismatch == mock_sentinel.mismatch &&
+           mock->mismatch_step == mock_sentinel.mismatch_step;
+}
+
 /* test_full_script_succeeds: write, wait, read in scripted order. */
 static void test_full_script_succeeds(void)
 {
@@ -272,10 +286,22 @@ static void test_invalid_arguments(void)
 
     assert(i2c_mock_open(NULL, &dev, 0x36, NULL, 0) ==
            I2C_STATUS_INVALID_ARGUMENT);
+    mock = mock_sentinel;
+    assert(i2c_mock_open(&mock, NULL, 0x36, NULL, 0) ==
+           I2C_STATUS_INVALID_ARGUMENT);
+    assert(mock_is_sentinel(&mock));
     assert(i2c_mock_open(&mock, &dev, 0x36, NULL, 1) ==
            I2C_STATUS_INVALID_ARGUMENT);
+    assert(mock_is_sentinel(&mock));
+    assert(dev.ops == NULL && dev.ctx == NULL && dev.is_simulated == 0);
 
     r = i2c_device_write(NULL, cmd_bytes, sizeof cmd_bytes);
+    assert(r.status == I2C_STATUS_INVALID_ARGUMENT);
+    r = i2c_device_read(NULL, buf, sizeof buf);
+    assert(r.status == I2C_STATUS_INVALID_ARGUMENT);
+    r = i2c_device_wait_us(NULL, 1000);
+    assert(r.status == I2C_STATUS_INVALID_ARGUMENT);
+    r = i2c_device_close(NULL);
     assert(r.status == I2C_STATUS_INVALID_ARGUMENT);
 
     assert(i2c_mock_open(&mock, &dev, 0x36, NULL, 0) ==
@@ -283,6 +309,10 @@ static void test_invalid_arguments(void)
     r = i2c_device_read(&dev, NULL, 2);
     assert(r.status == I2C_STATUS_INVALID_ARGUMENT);
     r = i2c_device_read(&dev, buf, 0);
+    assert(r.status == I2C_STATUS_INVALID_ARGUMENT);
+    r = i2c_device_write(&dev, NULL, 2);
+    assert(r.status == I2C_STATUS_INVALID_ARGUMENT);
+    r = i2c_device_write(&dev, cmd_bytes, 0);
     assert(r.status == I2C_STATUS_INVALID_ARGUMENT);
     assert(mock.mismatch == 0);
 
@@ -340,25 +370,19 @@ static void test_open_rejects_non_7bit_address(void)
         {.op = I2C_MOCK_WRITE, .bytes = cmd_bytes, .len = 2,
          .transfer_len = 2},
     };
-    const i2c_mock sentinel = {NULL, 7, 3, 11, 1, 2};
     i2c_mock mock;
     i2c_device dev = {0};
     size_t i;
     i2c_result r;
 
     for (i = 0; i < COUNT_OF(bad_addresses); i++) {
-        mock = sentinel;
+        mock = mock_sentinel;
         assert(i2c_mock_open(&mock, &dev, bad_addresses[i], steps,
                              COUNT_OF(steps)) ==
                I2C_STATUS_INVALID_ARGUMENT);
         assert(dev.ops == NULL && dev.ctx == NULL);
         assert(dev.address_7bit == 0 && dev.is_simulated == 0);
-        assert(mock.steps == sentinel.steps &&
-               mock.step_count == sentinel.step_count &&
-               mock.next_step == sentinel.next_step &&
-               mock.waited_us == sentinel.waited_us &&
-               mock.mismatch == sentinel.mismatch &&
-               mock.mismatch_step == sentinel.mismatch_step);
+        assert(mock_is_sentinel(&mock));
     }
 
     assert(i2c_mock_open(&mock, &dev, 0x7f, steps, COUNT_OF(steps)) ==
@@ -415,6 +439,80 @@ static void test_script_over_transfer_rejected(void)
     assert(r.status == I2C_STATUS_SCRIPT_MISMATCH);
 }
 
+/* test_empty_read_copies_nothing: a 0-byte read never touches the buffer. */
+static void test_empty_read_copies_nothing(void)
+{
+    const i2c_mock_step steps[] = {
+        {.op = I2C_MOCK_READ, .bytes = NULL, .len = 2, .transfer_len = 0},
+    };
+    i2c_mock mock;
+    i2c_device dev = {0};
+    uint8_t buf[2] = {0xAA, 0xAA};
+    i2c_result r;
+
+    assert(i2c_mock_open(&mock, &dev, 0x23, steps, COUNT_OF(steps)) ==
+           I2C_STATUS_OK);
+    r = i2c_device_read(&dev, buf, sizeof buf);
+    assert(r.status == I2C_STATUS_SHORT_TRANSFER);
+    assert(r.requested_len == 2 && r.transferred_len == 0);
+    assert(buf[0] == 0xAA && buf[1] == 0xAA);
+    r = i2c_device_close(&dev);
+    assert(r.status == I2C_STATUS_OK);
+}
+
+/*
+ * expect_step_rejected: run one operation against a one-step script and
+ * check it is a SCRIPT_MISMATCH that moves no bytes, leaves the buffer
+ * untouched, and fails close.
+ */
+static void expect_step_rejected(const i2c_mock_step *step, i2c_mock_op op,
+                                 size_t len)
+{
+    i2c_mock mock;
+    i2c_device dev = {0};
+    uint8_t buf[2] = {0xAA, 0xAA};
+    i2c_result r;
+
+    assert(len <= sizeof buf && len <= sizeof cmd_bytes);
+    assert(i2c_mock_open(&mock, &dev, 0x36, step, 1) == I2C_STATUS_OK);
+    if (op == I2C_MOCK_WRITE) {
+        r = i2c_device_write(&dev, cmd_bytes, len);
+    } else {
+        r = i2c_device_read(&dev, buf, len);
+    }
+    assert(r.status == I2C_STATUS_SCRIPT_MISMATCH);
+    assert(r.os_errno == 0 && r.transferred_len == 0);
+    assert(buf[0] == 0xAA && buf[1] == 0xAA);
+    assert(mock.mismatch == 1 && mock.mismatch_step == 0);
+    r = i2c_device_close(&dev);
+    assert(r.status == I2C_STATUS_SCRIPT_MISMATCH);
+}
+
+/* test_inconsistent_steps_rejected: malformed steps never run. */
+static void test_inconsistent_steps_rejected(void)
+{
+    const i2c_mock_step bad_op = {.op = (i2c_mock_op)99, .bytes = cmd_bytes,
+                                  .len = 2, .transfer_len = 2};
+    const i2c_mock_step write_null_bytes = {.op = I2C_MOCK_WRITE,
+                                            .len = 2, .transfer_len = 2,
+                                            .fail_errno = EIO};
+    const i2c_mock_step write_over = {.op = I2C_MOCK_WRITE,
+                                      .bytes = cmd_bytes, .len = 2,
+                                      .transfer_len = 3};
+    const i2c_mock_step write_len = {.op = I2C_MOCK_WRITE,
+                                     .bytes = cmd_bytes, .len = 2,
+                                     .transfer_len = 1};
+    const i2c_mock_step read_null_bytes = {.op = I2C_MOCK_READ, .len = 2,
+                                           .transfer_len = 2};
+
+    expect_step_rejected(&bad_op, I2C_MOCK_WRITE, 2);
+    expect_step_rejected(&bad_op, I2C_MOCK_READ, 2);
+    expect_step_rejected(&write_null_bytes, I2C_MOCK_WRITE, 2);
+    expect_step_rejected(&write_over, I2C_MOCK_WRITE, 2);
+    expect_step_rejected(&write_len, I2C_MOCK_WRITE, 1);
+    expect_step_rejected(&read_null_bytes, I2C_MOCK_READ, 2);
+}
+
 /* test_long_wait_recorded: a wait above the minimum counts in full. */
 static void test_long_wait_recorded(void)
 {
@@ -437,39 +535,50 @@ static void test_long_wait_recorded(void)
 /*
  * Canned backend: every operation returns the same preset result. It lets
  * tests reach wrapper paths a well-formed mock script never produces, such
- * as a backend that misreports its byte count. It never touches buffers.
+ * as a backend that misreports its byte count. It never touches buffers,
+ * and it counts calls so tests can prove the wrapper skipped it.
  */
 typedef struct {
     i2c_result result;
+    unsigned calls;
 } canned_backend;
 
-/* canned_write: return the preset result. */
+/* canned_called: count one backend call and return the preset result. */
+static i2c_result canned_called(void *ctx)
+{
+    canned_backend *backend = ctx;
+
+    backend->calls++;
+    return backend->result;
+}
+
+/* canned_write: count the call and return the preset result. */
 static i2c_result canned_write(void *ctx, const uint8_t *buf, size_t len)
 {
     (void)buf;
     (void)len;
-    return ((canned_backend *)ctx)->result;
+    return canned_called(ctx);
 }
 
-/* canned_read: return the preset result. */
+/* canned_read: count the call and return the preset result. */
 static i2c_result canned_read(void *ctx, uint8_t *buf, size_t len)
 {
     (void)buf;
     (void)len;
-    return ((canned_backend *)ctx)->result;
+    return canned_called(ctx);
 }
 
-/* canned_wait_us: return the preset result. */
+/* canned_wait_us: count the call and return the preset result. */
 static i2c_result canned_wait_us(void *ctx, uint32_t duration_us)
 {
     (void)duration_us;
-    return ((canned_backend *)ctx)->result;
+    return canned_called(ctx);
 }
 
-/* canned_close: return the preset result. */
+/* canned_close: count the call and return the preset result. */
 static i2c_result canned_close(void *ctx)
 {
-    return ((canned_backend *)ctx)->result;
+    return canned_called(ctx);
 }
 
 static const i2c_device_ops canned_ops = {
@@ -487,6 +596,7 @@ static void canned_open(canned_backend *backend, i2c_device *dev,
     i2c_result preset = {status, os_errno, 99, transferred_len};
 
     backend->result = preset;
+    backend->calls = 0;
     dev->ops = &canned_ops;
     dev->ctx = backend;
     dev->address_7bit = 0x23;
@@ -543,6 +653,61 @@ static void test_failed_backend_close_still_closes(void)
     assert(r.status == I2C_STATUS_INVALID_ARGUMENT);
 }
 
+/*
+ * test_closed_device_skips_backend: after close, every operation is refused
+ * by the wrapper and the backend is never called again.
+ */
+static void test_closed_device_skips_backend(void)
+{
+    canned_backend backend;
+    i2c_device dev = {0};
+    uint8_t buf[2] = {0xAA, 0xAA};
+    i2c_result r;
+
+    canned_open(&backend, &dev, I2C_STATUS_OK, 0, 2);
+    r = i2c_device_close(&dev);
+    assert(r.status == I2C_STATUS_OK);
+    assert(backend.calls == 1);
+
+    r = i2c_device_write(&dev, cmd_bytes, sizeof cmd_bytes);
+    assert(r.status == I2C_STATUS_INVALID_ARGUMENT);
+    r = i2c_device_read(&dev, buf, sizeof buf);
+    assert(r.status == I2C_STATUS_INVALID_ARGUMENT);
+    r = i2c_device_wait_us(&dev, 1000);
+    assert(r.status == I2C_STATUS_INVALID_ARGUMENT);
+    r = i2c_device_close(&dev);
+    assert(r.status == I2C_STATUS_INVALID_ARGUMENT);
+    assert(backend.calls == 1);
+    assert(buf[0] == 0xAA && buf[1] == 0xAA);
+}
+
+/*
+ * test_missing_callbacks_rejected: an ops table with NULL callbacks is
+ * refused instead of called, and the device is left as it was, so a
+ * resource the backend holds is not dropped by a close it cannot perform.
+ */
+static void test_missing_callbacks_rejected(void)
+{
+    static const i2c_device_ops no_ops = {NULL, NULL, NULL, NULL};
+    canned_backend backend;
+    i2c_device dev = {0};
+    uint8_t buf[2] = {0xAA, 0xAA};
+    i2c_result r;
+
+    dev.ops = &no_ops;
+    dev.ctx = &backend;
+    r = i2c_device_write(&dev, cmd_bytes, sizeof cmd_bytes);
+    assert(r.status == I2C_STATUS_INVALID_ARGUMENT);
+    r = i2c_device_read(&dev, buf, sizeof buf);
+    assert(r.status == I2C_STATUS_INVALID_ARGUMENT);
+    assert(buf[0] == 0xAA && buf[1] == 0xAA);
+    r = i2c_device_wait_us(&dev, 1000);
+    assert(r.status == I2C_STATUS_INVALID_ARGUMENT);
+    r = i2c_device_close(&dev);
+    assert(r.status == I2C_STATUS_INVALID_ARGUMENT);
+    assert(dev.ops == &no_ops && dev.ctx == &backend);
+}
+
 /* test_status_names: every status has stable log text. */
 static void test_status_names(void)
 {
@@ -574,10 +739,14 @@ int main(void)
     test_open_rejects_non_7bit_address();
     test_read_length_mismatch();
     test_script_over_transfer_rejected();
+    test_empty_read_copies_nothing();
+    test_inconsistent_steps_rejected();
     test_long_wait_recorded();
     test_backend_over_transfer();
     test_wait_has_no_byte_counts();
     test_failed_backend_close_still_closes();
+    test_closed_device_skips_backend();
+    test_missing_callbacks_rejected();
     test_status_names();
 
     puts("SIMULATED i2c transport tests passed");

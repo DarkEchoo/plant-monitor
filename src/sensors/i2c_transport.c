@@ -32,7 +32,8 @@ static int device_is_open(const i2c_device *dev)
 /* i2c_device_write: send one write transaction ending in STOP. */
 i2c_result i2c_device_write(i2c_device *dev, const uint8_t *buf, size_t len)
 {
-    if (!device_is_open(dev) || buf == NULL || len == 0) {
+    if (!device_is_open(dev) || dev->ops->write == NULL || buf == NULL ||
+        len == 0) {
         return make_result(I2C_STATUS_INVALID_ARGUMENT, len);
     }
     return finish_transfer(dev->ops->write(dev->ctx, buf, len), len);
@@ -41,7 +42,8 @@ i2c_result i2c_device_write(i2c_device *dev, const uint8_t *buf, size_t len)
 /* i2c_device_read: receive one read transaction ending in STOP. */
 i2c_result i2c_device_read(i2c_device *dev, uint8_t *buf, size_t len)
 {
-    if (!device_is_open(dev) || buf == NULL || len == 0) {
+    if (!device_is_open(dev) || dev->ops->read == NULL || buf == NULL ||
+        len == 0) {
         return make_result(I2C_STATUS_INVALID_ARGUMENT, len);
     }
     return finish_transfer(dev->ops->read(dev->ctx, buf, len), len);
@@ -52,7 +54,7 @@ i2c_result i2c_device_wait_us(i2c_device *dev, uint32_t duration_us)
 {
     i2c_result result;
 
-    if (!device_is_open(dev)) {
+    if (!device_is_open(dev) || dev->ops->wait_us == NULL) {
         return make_result(I2C_STATUS_INVALID_ARGUMENT, 0);
     }
     result = dev->ops->wait_us(dev->ctx, duration_us);
@@ -64,13 +66,14 @@ i2c_result i2c_device_wait_us(i2c_device *dev, uint32_t duration_us)
 /*
  * i2c_device_close: release the backend. The device is marked closed even if
  * the backend reports an error, matching close(2), which releases the
- * descriptor on Linux even when it fails.
+ * descriptor on Linux even when it fails. A device with no close callback
+ * is refused and left open: marking it closed would orphan its resource.
  */
 i2c_result i2c_device_close(i2c_device *dev)
 {
     i2c_result result;
 
-    if (!device_is_open(dev)) {
+    if (!device_is_open(dev) || dev->ops->close == NULL) {
         return make_result(I2C_STATUS_INVALID_ARGUMENT, 0);
     }
     result = dev->ops->close(dev->ctx);

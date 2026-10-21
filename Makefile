@@ -27,7 +27,8 @@ test: $(TEST_TARGET) $(TRANSPORT_TEST_TARGET)
 	./$(TEST_TARGET)
 	./$(TRANSPORT_TEST_TARGET)
 
-ASAN_FLAGS := -fsanitize=address,undefined -fno-omit-frame-pointer -g
+ASAN_FLAGS := -fsanitize=address,undefined -fno-sanitize-recover=all \
+	-fno-omit-frame-pointer -g
 
 # asan: build and test in $(BUILD_DIR)/asan so normal binaries are untouched.
 asan:

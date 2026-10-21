@@ -67,6 +67,70 @@ Michael's follow-up in the same thread:
 Not done: approving the review, resolving his threads, or merging. Those are
 Michael's calls after he re-reviews.
 
+## Validation-gap audit (2026-10-21, after Michael's review)
+
+Jesse asked for the existing transport and mock tests to be audited for
+validation gaps. Only missing checks were added, and existing coverage was not
+duplicated. The audit added no transfer-size limits and no reserved-address
+restrictions. Addresses are still accepted up to 0x7f and rejected above it.
+
+| Area | Already covered | Added | Bug it prevents |
+|---|---|---|---|
+| NULL arguments | NULL mock; NULL script with count 1 rejected, with count 0 allowed; `write(NULL dev)`; `read` with NULL buffer or len 0 | `i2c_mock_open` with NULL dev; NULL dev to `read`, `wait_us` and `close`; `write` with NULL buffer or len 0 | A dropped NULL check dereferences NULL and crashes the daemon. A 0-length write on Linux i2c-dev still puts the address on the bus. |
+| Missing callbacks | nothing | **Code change:** each `i2c_device_*` wrapper returns `INVALID_ARGUMENT` when its callback is NULL and leaves the device unchanged. Test: `test_missing_callbacks_rejected`. | A backend with an unimplemented callback made the wrapper jump to address 0. The test was written first and crashed (`SIGSEGV` at `0x0` from `i2c_device_write`). `close` leaves the device open, because marking it closed would orphan a descriptor nothing released. |
+| Malformed script steps | READ `transfer_len > len`; READ wrong length; WRITE wrong bytes | `test_inconsistent_steps_rejected`: out-of-range `op`; WRITE with NULL bytes plus `fail_errno` (pins the N4 order); WRITE `transfer_len > len`; WRITE with the wrong length; READ with NULL bytes and `transfer_len > 0` | A bad script could `memcpy` from NULL, read past the expected bytes, or let a truncated command that matches the first byte pass as OK. |
+| Short reads | 1 of 2 bytes copied, `buf[1]` untouched | `test_empty_read_copies_nothing`: a 0-byte READ with NULL bytes | Removing the `transfer_len > 0` guard calls `memcpy(buf, NULL, 0)`, which is undefined behaviour. |
+| Failed opens leave state unchanged | reopen refusal; address rejection | sentinel-mock checks for the NULL-dev and NULL-script rejections | An open that writes the mock before validating would reset a script that is still in use. |
+| Reopening an active device | `test_open_refuses_open_device` | nothing | — |
+| Operations after close | status for `read` and `close` only | `test_closed_device_skips_backend`: the canned backend now counts calls, and write, read, wait and close after close leave the count at 1 | On Linux, a closed device whose fd number had been reused would send I2C traffic to, or close, an unrelated descriptor. |
+| errno kept | read, write and wait via the mock; close via the canned backend | nothing | — |
+| One mock on two devices | nothing | **Deferred** (see below) | — |
+
+### Mutation check: each new test catches its bug
+
+Each guard was removed on a scratch copy and the suite was run. The repo was
+not touched.
+
+| Removed guard | Result |
+|---|---|
+| mock open `dev == NULL` | segfault |
+| mock read NULL-bytes check | segfault |
+| mock read `memcpy` guard (`make asan`) | `runtime error: null pointer passed as argument 2`, exit 2 |
+| mock write length check | `expect_step_rejected` assertion |
+| mock write over-transfer check | `expect_step_rejected` assertion |
+| wrapper write `len == 0` | `test_invalid_arguments` assertion |
+| wrapper `dev != NULL` | segfault |
+| wrapper close clearing `ops` | `test_unused_steps_fail_close` assertion |
+| wrapper write or close callback check | segfault |
+
+The first mutation run exposed two gaps, and both were fixed:
+
+1. **`make asan` passed despite a UBSan report.** UBSan prints and continues
+   by default, so the `memcpy` mutation exited 0. `ASAN_FLAGS` now includes
+   `-fno-sanitize-recover=all`, so any UBSan report fails `make asan`.
+2. **The write-length case was hidden by the over-transfer check.** The case
+   now uses `transfer_len = 1`, which isolates the length check.
+
+The out-of-range `op` case documents current behaviour (it becomes a
+`SCRIPT_MISMATCH`). The audit found no bug in that path.
+
+### Deferred: one mock attached to two active devices
+
+Preventing this needs a lifecycle change, not a small check:
+
+- Callers declare `i2c_mock mock;` without initialising it. An "in use" flag
+  or owner pointer read at open would therefore be indeterminate.
+  - Making this safe means a new contract that every mock is zero-initialised
+    before its first open, and updating every caller.
+- Callbacks receive only `ctx`, not the device. The first device cannot tell
+  that a second open has reset its script unless an owner pointer is stored
+  and checked on every operation.
+- A device dropped without a close would leave the mock marked busy forever.
+
+This is test-only. Each Linux device will own its own descriptor and context,
+so no product path shares a backend context. It remains a known limitation
+until the owner-pointer and zero-init contract is agreed with Michael.
+
 ## Michael: please look hardest at the Makefile (shared)
 
 ### What changed (additive only)
@@ -170,7 +234,7 @@ Step 1 adds no sensor drivers, no Linux backend, and no analysis.
 
 ### `tests/test_i2c_transport.c`
 
-- 21 tests. The binary prints "SIMULATED".
+- 25 tests. The binary prints "SIMULATED".
 - A test-only "canned" backend reaches wrapper paths that a well-formed mock
   script cannot produce.
 
@@ -182,9 +246,9 @@ moisture trend, calibration, fusion or care-advice logic.
 
 ## Final verification
 
-### After Michael's review fixes
+### After Michael's review fixes and the validation-gap audit
 
-Run 2026-10-21 on Ubuntu with GCC 15.2.0, GNU Make 4.4.1 and Valgrind 3.26.0,
+Run 2026-10-21 (re-run after the audit) on Ubuntu with GCC 15.2.0, GNU Make 4.4.1 and Valgrind 3.26.0,
 in this order, with no `make clean` between `asan` and `memcheck`:
 
 | Command | Exit | Result |
@@ -192,14 +256,14 @@ in this order, with no `make clean` between `asan` and `memcheck`:
 | `make clean` | 0 | `rm -rf build` |
 | `make` | 0 | builds `build/plant-monitor` |
 | `make test` | 0 | `analysis tests passed`; `SIMULATED i2c transport tests passed` |
-| `make asan` | 0 | builds into `build/asan/`; both tests pass under ASan and UBSan with no sanitizer reports |
+| `make asan` | 0 | builds into `build/asan/` with `-fno-sanitize-recover=all`; both tests pass under ASan and UBSan with no sanitizer reports |
 | `make memcheck` | 0 | uses `build/`: `ERROR SUMMARY: 0 errors from 0 contexts`, `All heap blocks were freed` for both binaries |
 | `make test` | 0 | both tests pass with the normal `build/` binaries |
 
 Extra checks:
 
-- `make clean && make -j8 asan` passed. Running it again gave `Nothing to be
-  done for 'all'` and both tests passed.
+- `make clean && make -j8 asan` passed (also after the audit). Running it
+  again gave `Nothing to be done for 'all'` and both tests passed.
 - `make -j8 && make -j8 memcheck` straight afterwards, with no clean, gave 0
   errors for both binaries.
 - `ldd` shows `libasan` linked into all three `build/asan/` binaries and none
@@ -224,6 +288,8 @@ Extra checks:
 - [x] N6 decision: Michael asked for the `build/asan` fix (applied; awaiting
       his re-review)
 - [ ] Re-review of the review fixes (`build/asan`, 7-bit address check)
+- [ ] Validation-gap audit reviewed (NULL-callback check,
+      `-fno-sanitize-recover=all`, new tests, shared-mock deferral)
 - [ ] Transport and mock contract reviewed (ownership, short transfers,
       errors, close, reopen refusal)
 - [ ] Approved for an `M2:` commit
