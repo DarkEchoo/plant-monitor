@@ -9,7 +9,8 @@
   `src/sensors/i2c_mock.c`, `tests/test_i2c_transport.c`.
 - **Raw transcript:** kept locally by Jesse, not committed, until the course
   submission arrangement is settled.
-- **Human review:** Michael's review is **PENDING**. See
+- **Human review:** Michael requested changes on PR #1 on 2026-10-21. The
+  fixes are pushed and his re-review is **PENDING**. See
   [M2-step1-i2c-transport.md](M2-step1-i2c-transport.md).
 
 ## How each finding was handled
@@ -30,7 +31,7 @@ the code it describes before acting on it.
 | N3 | nit | The short-read test did not check the copied byte | **Fixed.** It now asserts `buf[0] == 0x02`. |
 | N4 | nit | The mock's validation order differed between read and write | **Documented** in `i2c_mock.h`. |
 | N5 | nit, upgraded | `i2c_mock_open` overwrote a device that was already open | **Fixed** (see below). |
-| N6 | nit | The Makefile does not rebuild when CFLAGS change | **Deferred to Michael** (shared file). The workaround and a fix trialled on a scratch copy are in [M2-step1-i2c-transport.md](M2-step1-i2c-transport.md#n6-stale-sanitizer-binaries-pre-existing-pattern-needs-your-decision). |
+| N6 | nit | The Makefile does not rebuild when CFLAGS change | **Fixed after Michael's PR #1 review.** He asked for the separate `build/asan` directory. `asan` now builds there through a recursive make, so `memcheck` and `test` keep using normal `build/` binaries, and `asan` no longer depends on `clean`. See [M2-step1-i2c-transport.md](M2-step1-i2c-transport.md#n6-stale-sanitizer-binaries-resolved-after-michaels-review). |
 
 ### N5: why it was upgraded from a nit
 

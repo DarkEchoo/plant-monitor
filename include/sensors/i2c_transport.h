@@ -19,6 +19,12 @@
  * returning INVALID_ARGUMENT and leaving it untouched, so a missing close
  * cannot overwrite and orphan the resource it holds. Close it first.
  *
+ * Addresses are 7-bit: every backend's open rejects an address above
+ * I2C_ADDRESS_7BIT_MAX (0x7f) with INVALID_ARGUMENT, before changing the
+ * device or acquiring any resource (the Linux backend checks it before
+ * open() or ioctl(I2C_SLAVE)). Only the range is checked; reserved addresses
+ * inside it are not refused here.
+ *
  * Backend contract:
  * - OS_ERROR always carries the nonzero errno of the failed call. A
  *   condition with no errno (such as read() returning 0) is reported as
@@ -29,6 +35,8 @@
  *   for a partial wait. Wait results carry no byte counts: the wrapper sets
  *   requested_len and transferred_len to 0.
  */
+
+#define I2C_ADDRESS_7BIT_MAX 0x7f
 
 typedef enum {
     I2C_STATUS_OK = 0,

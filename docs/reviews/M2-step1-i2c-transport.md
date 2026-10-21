@@ -5,8 +5,67 @@
 | Author | Jesse (`src/sensors/`, branch `jesse/sensor-capture`) |
 | Milestone | M2 (TP-D2) |
 | Fresh-context agent review | Done 2026-10-19; findings in [M2-step1-agent-review.md](M2-step1-agent-review.md) |
-| **Michael's human review** | **PENDING. Not yet reviewed or approved.** |
-| Commit | Not committed. Will use `M2: ...` after Michael signs off. |
+| **Michael's human review** | Changes requested on PR #1 (2026-10-21). Fixes pushed; **re-review PENDING. Not approved.** |
+| Commits | `0100a43` M2: add sensor transport abstraction and mocked tests; review fixes in `M2: isolate sanitizer builds and validate mock addresses` |
+
+## Michael's PR #1 review (2026-10-21) and how it was addressed
+
+Michael (`mburns45`) reviewed commit `0100a43` and requested changes. His
+comments, quoted exactly:
+
+**Review summary (CHANGES_REQUESTED):**
+
+> This is the main thing we should fix before merging. Right now ASan and
+> Valgrind are using the same build directory, which can cause make memcheck
+> to fail because it picks up binaries built with ASan. Could we put the ASan
+> build in a separate build/asan directory so the two don’t interfere with
+> each other?
+
+**Thread 1, `Makefile` line 29
+([r4332797783](https://github.com/DarkEchoo/plant-monitor/pull/1#discussion_r4332797783)):**
+
+> I think we should fix this before merging instead of having to remember to
+> run make clean between ASan and Valgrind. Could we just use a separate
+> build/asan directory so the builds don’t interfere with each other?
+
+- **Addressed.** This is N6 below. Michael chose the proposed `build/asan` fix.
+- `asan` now runs a recursive make with `BUILD_DIR=$(BUILD_DIR)/asan` and the
+  sanitizer flags, building `all test` there.
+- Normal builds, `make test` and `make memcheck` still use `build/`.
+- `asan` no longer depends on `clean`, so there is no clean/build race under
+  `make -j`.
+- `make clean` still removes both, because `build/asan` is inside `build/`.
+
+**Thread 2, `src/sensors/i2c_mock.c` line 111
+([r4332806357](https://github.com/DarkEchoo/plant-monitor/pull/1#discussion_r4332806357)):**
+
+> Since this is supposed to be a 7-bit I2C address, should we reject anything
+> over 0x7f here and add a quick test for it? That would keep the mock and the
+> real backend using the same rules.
+
+Michael's follow-up in the same thread:
+
+> This isn’t an issue more of a suggestion.
+
+- **Adopted** (non-blocking suggestion).
+- `i2c_mock_open` returns `INVALID_ARGUMENT` for an address above 0x7f.
+  The check sits alongside the existing argument checks, before any field is
+  written, so the device and mock are untouched and no steps are consumed.
+- `i2c_transport.h` states this as a contract that every backend must follow,
+  with `I2C_ADDRESS_7BIT_MAX` (0x7f) defined there. The future Linux backend
+  must check it before `open()` or `ioctl(I2C_SLAVE)`.
+- Only the range is checked. Reserved addresses inside 0x00-0x7f are not
+  refused.
+- `test_open_rejects_non_7bit_address` covers the boundary:
+  - 0x80 and 0xff are rejected. The zeroed device stays zeroed, and a
+    sentinel-filled mock keeps every field.
+  - 0x7f opens, and its script runs from step 0.
+- The test was written first. Against the old mock it failed with
+  `Assertion 'i2c_mock_open(&mock, &dev, bad_addresses[i], ...) ==
+  I2C_STATUS_INVALID_ARGUMENT' failed`.
+
+Not done: approving the review, resolving his threads, or merging. Those are
+Michael's calls after he re-reviews.
 
 ## Michael: please look hardest at the Makefile (shared)
 
@@ -28,7 +87,7 @@
 
 No existing rule's flags or behaviour changed.
 
-### N6: stale sanitizer binaries (pre-existing pattern, needs your decision)
+### N6: stale sanitizer binaries (resolved after Michael's review)
 
 **Problem.** Changing CFLAGS doesn't trigger a rebuild, and `asan` writes its
 instrumented binaries into the same `build/` directory as the normal build.
@@ -40,16 +99,12 @@ After `make asan`:
   `make: *** [Makefile:34: memcheck] Error 1`.
 - `make test` silently reuses the sanitizer binaries.
 
-**Current workaround (what we do today).** Always run `make clean` between
-`make asan` and `make memcheck`. The verification order is:
+**Old workaround (no longer needed).** Run `make clean` between
+`make asan` and `make memcheck`.
 
-```sh
-make && make test && make asan && make clean && make memcheck
-```
-
-**Proposed fix.** This is not applied to the shared Makefile. It was trialled
-on a scratch copy only. Build sanitizer binaries in their own directory
-through a sub-make:
+**Fix, applied after Michael chose it on PR #1.** Build sanitizer binaries in
+their own directory through a sub-make. The committed version also adds a
+one-line comment above the rule:
 
 ```make
 ASAN_FLAGS := -fsanitize=address,undefined -fno-omit-frame-pointer -g
@@ -65,7 +120,7 @@ asan: CFLAGS += -fsanitize=address,undefined -fno-omit-frame-pointer -g
 asan: clean all test
 ```
 
-What happened on the scratch copy:
+What happened in the final verification below (first seen on a scratch copy):
 - `make asan` built into `build/asan/` and both tests passed.
 - `make memcheck` straight afterwards, with no clean, built normal binaries in
   `build/` and passed with 0 errors.
@@ -111,10 +166,11 @@ Step 1 adds no sensor drivers, no Linux backend, and no analysis.
 - A mismatch is sticky, and close fails if the script was not fully used.
 - It refuses to open a device that is already open, and it always marks
   devices simulated.
+- It refuses an address above 0x7f (added after Michael's review).
 
 ### `tests/test_i2c_transport.c`
 
-- 20 tests. The binary prints "SIMULATED".
+- 21 tests. The binary prints "SIMULATED".
 - A test-only "canned" backend reaches wrapper paths that a well-formed mock
   script cannot produce.
 
@@ -126,8 +182,33 @@ moisture trend, calibration, fusion or care-advice logic.
 
 ## Final verification
 
-Run 2026-10-19 on Ubuntu with GCC 15.2.0, GNU Make 4.4.1 and Valgrind 3.26.0,
-in this order:
+### After Michael's review fixes
+
+Run 2026-10-21 on Ubuntu with GCC 15.2.0, GNU Make 4.4.1 and Valgrind 3.26.0,
+in this order, with no `make clean` between `asan` and `memcheck`:
+
+| Command | Exit | Result |
+|---|---|---|
+| `make clean` | 0 | `rm -rf build` |
+| `make` | 0 | builds `build/plant-monitor` |
+| `make test` | 0 | `analysis tests passed`; `SIMULATED i2c transport tests passed` |
+| `make asan` | 0 | builds into `build/asan/`; both tests pass under ASan and UBSan with no sanitizer reports |
+| `make memcheck` | 0 | uses `build/`: `ERROR SUMMARY: 0 errors from 0 contexts`, `All heap blocks were freed` for both binaries |
+| `make test` | 0 | both tests pass with the normal `build/` binaries |
+
+Extra checks:
+
+- `make clean && make -j8 asan` passed. Running it again gave `Nothing to be
+  done for 'all'` and both tests passed.
+- `make -j8 && make -j8 memcheck` straight afterwards, with no clean, gave 0
+  errors for both binaries.
+- `ldd` shows `libasan` linked into all three `build/asan/` binaries and none
+  of the three `build/` binaries.
+- After touching `src/sensors/i2c_mock.c`, `make -j8 asan` rebuilt
+  `build/asan/test_i2c_transport` and left the mtimes of the `build/` binaries
+  unchanged.
+
+### Before Michael's review (2026-10-19, commit `0100a43`)
 
 | Command | Exit | Result |
 |---|---|---|
@@ -139,13 +220,16 @@ in this order:
 
 ## Michael's review
 
-- [ ] Makefile additions reviewed
-- [ ] N6 decision: adopt the proposed `build/asan` fix, choose another fix, or
-      keep the clean-before-memcheck workaround
+- [x] Makefile additions reviewed (PR #1, 2026-10-21; changes requested)
+- [x] N6 decision: Michael asked for the `build/asan` fix (applied; awaiting
+      his re-review)
+- [ ] Re-review of the review fixes (`build/asan`, 7-bit address check)
 - [ ] Transport and mock contract reviewed (ownership, short transfers,
       errors, close, reopen refusal)
 - [ ] Approved for an `M2:` commit
 
 Reviewer notes:
 
-_(pending)_
+- 2026-10-21: changes requested on PR #1. See "Michael's PR #1 review" above
+  for his exact comments.
+- Re-review: _(pending)_

@@ -39,9 +39,9 @@ typedef struct {
     size_t mismatch_step;   /* index of the first unexpected operation */
 } i2c_mock;
 
-/* dev must be closed (zeroed or closed by i2c_device_close); see
- * i2c_transport.h. Returns INVALID_ARGUMENT and leaves dev untouched
- * otherwise. */
+/* dev must be closed (zeroed or closed by i2c_device_close) and
+ * address_7bit must be at most 0x7f; see i2c_transport.h. Returns
+ * INVALID_ARGUMENT and leaves dev and mock untouched otherwise. */
 i2c_status i2c_mock_open(i2c_mock *mock, i2c_device *dev,
                          uint8_t address_7bit,
                          const i2c_mock_step *steps, size_t step_count);

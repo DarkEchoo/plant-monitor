@@ -27,8 +27,11 @@ test: $(TEST_TARGET) $(TRANSPORT_TEST_TARGET)
 	./$(TEST_TARGET)
 	./$(TRANSPORT_TEST_TARGET)
 
-asan: CFLAGS += -fsanitize=address,undefined -fno-omit-frame-pointer -g
-asan: clean all test
+ASAN_FLAGS := -fsanitize=address,undefined -fno-omit-frame-pointer -g
+
+# asan: build and test in $(BUILD_DIR)/asan so normal binaries are untouched.
+asan:
+	$(MAKE) BUILD_DIR=$(BUILD_DIR)/asan CFLAGS="$(CFLAGS) $(ASAN_FLAGS)" all test
 
 memcheck: $(TEST_TARGET) $(TRANSPORT_TEST_TARGET)
 	@if command -v valgrind >/dev/null 2>&1; then \

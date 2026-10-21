@@ -112,13 +112,15 @@ static const i2c_device_ops mock_ops = {
 /*
  * i2c_mock_open: bind a simulated device to a borrowed step script. Refuses
  * a device that is still open, as the Linux backend will, so tests catch a
- * missing close that would leak a descriptor on real hardware.
+ * missing close that would leak a descriptor on real hardware. Also refuses
+ * an address above 0x7f, matching the 7-bit rule in i2c_transport.h.
  */
 i2c_status i2c_mock_open(i2c_mock *mock, i2c_device *dev,
                          uint8_t address_7bit,
                          const i2c_mock_step *steps, size_t step_count)
 {
     if (mock == NULL || dev == NULL || dev->ops != NULL ||
+        address_7bit > I2C_ADDRESS_7BIT_MAX ||
         (steps == NULL && step_count > 0)) {
         return I2C_STATUS_INVALID_ARGUMENT;
     }

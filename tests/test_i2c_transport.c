@@ -328,6 +328,49 @@ static void test_open_refuses_open_device(void)
     assert(r.status == I2C_STATUS_OK);
 }
 
+/*
+ * test_open_rejects_non_7bit_address: 0x80 and 0xff are refused without
+ * touching the device or the mock; 0x7f, the top 7-bit address, opens and
+ * runs its script from the first step.
+ */
+static void test_open_rejects_non_7bit_address(void)
+{
+    static const uint8_t bad_addresses[] = {0x80, 0xff};
+    const i2c_mock_step steps[] = {
+        {.op = I2C_MOCK_WRITE, .bytes = cmd_bytes, .len = 2,
+         .transfer_len = 2},
+    };
+    const i2c_mock sentinel = {NULL, 7, 3, 11, 1, 2};
+    i2c_mock mock;
+    i2c_device dev = {0};
+    size_t i;
+    i2c_result r;
+
+    for (i = 0; i < COUNT_OF(bad_addresses); i++) {
+        mock = sentinel;
+        assert(i2c_mock_open(&mock, &dev, bad_addresses[i], steps,
+                             COUNT_OF(steps)) ==
+               I2C_STATUS_INVALID_ARGUMENT);
+        assert(dev.ops == NULL && dev.ctx == NULL);
+        assert(dev.address_7bit == 0 && dev.is_simulated == 0);
+        assert(mock.steps == sentinel.steps &&
+               mock.step_count == sentinel.step_count &&
+               mock.next_step == sentinel.next_step &&
+               mock.waited_us == sentinel.waited_us &&
+               mock.mismatch == sentinel.mismatch &&
+               mock.mismatch_step == sentinel.mismatch_step);
+    }
+
+    assert(i2c_mock_open(&mock, &dev, 0x7f, steps, COUNT_OF(steps)) ==
+           I2C_STATUS_OK);
+    assert(dev.address_7bit == 0x7f);
+    assert(mock.next_step == 0 && mock.mismatch == 0);
+    r = i2c_device_write(&dev, cmd_bytes, sizeof cmd_bytes);
+    assert(r.status == I2C_STATUS_OK);
+    r = i2c_device_close(&dev);
+    assert(r.status == I2C_STATUS_OK);
+}
+
 /* test_read_length_mismatch: a read of the wrong length is rejected. */
 static void test_read_length_mismatch(void)
 {
@@ -528,6 +571,7 @@ int main(void)
     test_operation_after_script_end();
     test_invalid_arguments();
     test_open_refuses_open_device();
+    test_open_rejects_non_7bit_address();
     test_read_length_mismatch();
     test_script_over_transfer_rejected();
     test_long_wait_recorded();
