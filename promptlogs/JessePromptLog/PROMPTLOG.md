@@ -15,3 +15,14 @@ bug that you caught.
   - Define when the clock is trusted while offline, and keep storage bounded then. Skipping age-based deletion must not allow unlimited disk growth.
 - **Optional nits:** CRC variant, magic value, millilux wording.
 - **Deferred:** when to re-run sensor initialization will be agreed during the capture-process design.
+
+## Episode: agent-introduced test gap in sensor-diag clock order, 2026-10-24
+
+- **Change:** sensor-diag (PR #8, commit `201064f`). Claude wrote the code and the tests.
+- **Intended behaviour:** read both clocks immediately *after* each measurement attempt, including failed ones, so the timestamps mark when the attempt completed.
+- **Gap:** the code did read the clocks after each attempt, but no test checked the order. The fresh-context reviewer agent found this: in a scratch copy it moved both clock reads before the measurement, and the whole suite still passed. Claude then reproduced the result.
+- **Fix:** sequence assertions. The fake clock records how many mock script steps had run at each clock read, and the tests check that the measurement's steps ran first, for successful, failed and rejected attempts.
+- **Evidence:**
+  - With the clocks moved before the measurement, the suite then failed (`test_all_ok_exact_output`).
+  - The real code passed the recorded checks: `make clean`, `make`, `make test`, `make asan`, `make memcheck` and `make test` all exited 0.
+- **My role:** I reviewed the reviewer's report and asked for this entry. I did not find the gap myself.
