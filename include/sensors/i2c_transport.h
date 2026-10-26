@@ -34,9 +34,15 @@
  *   OK with the actual byte count, which the wrapper turns into
  *   SHORT_TRANSFER.
  * - wait_us returns only after the full duration has elapsed, retrying
- *   with the remaining time when interrupted (EINTR); it never reports OK
- *   for a partial wait. Wait results carry no byte counts: the wrapper sets
- *   requested_len and transferred_len to 0.
+ *   toward the same deadline when interrupted (EINTR); it never reports OK
+ *   for a partial wait. A duration whose deadline the backend's clock
+ *   cannot represent is INVALID_ARGUMENT. Wait results carry no byte
+ *   counts: the wrapper sets requested_len and transferred_len to 0.
+ * - Interruption policies differ by operation. A read or write interrupted
+ *   by a signal (EINTR) is reported as OS_ERROR/EINTR and not retried,
+ *   because the backend cannot tell whether the transaction reached the
+ *   bus; the caller decides. A wait is retried toward the deadline fixed
+ *   before it first slept. A close is never retried.
  */
 
 #define I2C_ADDRESS_7BIT_MAX 0x7f

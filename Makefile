@@ -6,6 +6,16 @@ TEST_TARGET := $(BUILD_DIR)/test_analysis
 TRANSPORT_TEST_TARGET := $(BUILD_DIR)/test_i2c_transport
 TRANSPORT_SRCS := src/sensors/i2c_transport.c src/sensors/i2c_mock.c
 TRANSPORT_HDRS := include/sensors/i2c_transport.h include/sensors/i2c_mock.h
+LINUX_TEST_TARGET := $(BUILD_DIR)/test_i2c_linux
+LINUX_SRCS := src/sensors/i2c_transport.c src/sensors/i2c_linux.c
+LINUX_HDRS := include/sensors/i2c_transport.h include/sensors/i2c_linux.h \
+	src/sensors/i2c_linux_sys.h
+BH1750_TEST_TARGET := $(BUILD_DIR)/test_bh1750
+BH1750_SRCS := src/sensors/bh1750.c $(TRANSPORT_SRCS)
+BH1750_HDRS := include/sensors/bh1750.h $(TRANSPORT_HDRS)
+SOIL_TEST_TARGET := $(BUILD_DIR)/test_seesaw_soil
+SOIL_SRCS := src/sensors/seesaw_soil.c $(TRANSPORT_SRCS)
+SOIL_HDRS := include/sensors/seesaw_soil.h $(TRANSPORT_HDRS)
 
 .PHONY: all test asan memcheck clean
 
@@ -23,9 +33,22 @@ $(TEST_TARGET): tests/test_analysis.c src/analysis.c include/analysis.h | $(BUIL
 $(TRANSPORT_TEST_TARGET): tests/test_i2c_transport.c $(TRANSPORT_SRCS) $(TRANSPORT_HDRS) | $(BUILD_DIR)
 	$(CC) $(CFLAGS) tests/test_i2c_transport.c $(TRANSPORT_SRCS) -o $(TRANSPORT_TEST_TARGET)
 
-test: $(TEST_TARGET) $(TRANSPORT_TEST_TARGET)
+$(LINUX_TEST_TARGET): tests/test_i2c_linux.c $(LINUX_SRCS) $(LINUX_HDRS) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) tests/test_i2c_linux.c $(LINUX_SRCS) -o $(LINUX_TEST_TARGET)
+
+$(BH1750_TEST_TARGET): tests/test_bh1750.c $(BH1750_SRCS) $(BH1750_HDRS) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) tests/test_bh1750.c $(BH1750_SRCS) -o $(BH1750_TEST_TARGET)
+
+$(SOIL_TEST_TARGET): tests/test_seesaw_soil.c $(SOIL_SRCS) $(SOIL_HDRS) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) tests/test_seesaw_soil.c $(SOIL_SRCS) -o $(SOIL_TEST_TARGET)
+
+test: $(TEST_TARGET) $(TRANSPORT_TEST_TARGET) $(LINUX_TEST_TARGET) \
+	$(BH1750_TEST_TARGET) $(SOIL_TEST_TARGET)
 	./$(TEST_TARGET)
 	./$(TRANSPORT_TEST_TARGET)
+	./$(LINUX_TEST_TARGET)
+	./$(BH1750_TEST_TARGET)
+	./$(SOIL_TEST_TARGET)
 
 ASAN_FLAGS := -fsanitize=address,undefined -fno-sanitize-recover=all \
 	-fno-omit-frame-pointer -g
@@ -34,10 +57,14 @@ ASAN_FLAGS := -fsanitize=address,undefined -fno-sanitize-recover=all \
 asan:
 	$(MAKE) BUILD_DIR=$(BUILD_DIR)/asan CFLAGS="$(CFLAGS) $(ASAN_FLAGS)" all test
 
-memcheck: $(TEST_TARGET) $(TRANSPORT_TEST_TARGET)
+memcheck: $(TEST_TARGET) $(TRANSPORT_TEST_TARGET) $(LINUX_TEST_TARGET) \
+	$(BH1750_TEST_TARGET) $(SOIL_TEST_TARGET)
 	@if command -v valgrind >/dev/null 2>&1; then \
 		valgrind --leak-check=full --error-exitcode=1 ./$(TEST_TARGET) && \
-		valgrind --leak-check=full --error-exitcode=1 ./$(TRANSPORT_TEST_TARGET); \
+		valgrind --leak-check=full --error-exitcode=1 ./$(TRANSPORT_TEST_TARGET) && \
+		valgrind --leak-check=full --error-exitcode=1 ./$(LINUX_TEST_TARGET) && \
+		valgrind --leak-check=full --error-exitcode=1 ./$(BH1750_TEST_TARGET) && \
+		valgrind --leak-check=full --error-exitcode=1 ./$(SOIL_TEST_TARGET); \
 	else \
 		echo "valgrind is not installed"; exit 1; \
 	fi
