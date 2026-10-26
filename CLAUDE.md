@@ -67,6 +67,11 @@
 - For hardware bugs, record direct evidence such as `i2cdetect`, `dmesg`, exact
   error logs, and wiring observations before proposing a fix.
 - Commit only from a green state with messages in the form `M<n>: <what>`.
+- Work on feature branches. Feature-branch commits, pushes, and draft PRs
+  are allowed so Michael can review the changes on GitHub.
+- Michael reviews and approves Jesse's changes before they are merged. Do not
+  merge into `main` without his approval.
+- A fresh-context agent review does not replace Michael's review.
 - Each partner works from a separate clone and personal Claude Code sessions.
 - Copy raw `.jsonl` files from `~/.claude/projects/` at every M1-M5 milestone.
 - Each milestone diff receives fresh-context agent review and human partner review.
