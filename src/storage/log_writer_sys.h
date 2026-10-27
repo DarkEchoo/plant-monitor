@@ -18,10 +18,11 @@
 typedef struct storage_log_sys {
     /* open(path, O_RDONLY | O_DIRECTORY | O_CLOEXEC) */
     int (*open_dir)(const char *path);
-    /* openat(dir_fd, name, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC,
+    /* openat(dir_fd, name, O_RDWR | O_CREAT | O_APPEND | O_CLOEXEC,
      * 0644) */
     int (*open_append_at)(int dir_fd, const char *name);
     int (*fstat)(int fd, struct stat *st);
+    ssize_t (*pread)(int fd, void *buf, size_t len, off_t offset);
     ssize_t (*write)(int fd, const void *buf, size_t len);
     int (*fdatasync)(int fd);
     int (*fsync)(int fd);

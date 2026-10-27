@@ -5,6 +5,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <string.h>
 #include <unistd.h>
 
 #define STORAGE_FLAGS_KNOWN                                         \
@@ -18,10 +19,12 @@ static int real_open_dir(const char *path)
     return open(path, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
 }
 
-/* real_open_append_at: create or open dir_fd/name for appending. */
+/* real_open_append_at: create or open dir_fd/name for appending. It is
+ * opened read-write only so open can pread the last record; O_APPEND
+ * still sends every write to the end. */
 static int real_open_append_at(int dir_fd, const char *name)
 {
-    return openat(dir_fd, name, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC,
+    return openat(dir_fd, name, O_RDWR | O_CREAT | O_APPEND | O_CLOEXEC,
                   LOG_FILE_MODE);
 }
 
@@ -37,8 +40,8 @@ static int real_fdatasync(int fd)
 }
 
 const storage_log_sys storage_log_real_sys = {
-    real_open_dir, real_open_append_at, fstat, write, real_fdatasync,
-    fsync, close
+    real_open_dir, real_open_append_at, fstat, pread, write,
+    real_fdatasync, fsync, close
 };
 
 /* log_result: build a writer result. */
@@ -73,19 +76,65 @@ static storage_log_result check_open(const storage_log_writer *w)
 {
     if (w == NULL)
         return log_status(STORAGE_LOG_ARGUMENT);
-    if (w->fd < 0)
+    if (!w->is_open)
         return log_status(STORAGE_LOG_NOT_OPEN);
     if (w->failed)
         return log_status(STORAGE_LOG_FAILED);
     return log_ok();
 }
 
+/* record_is_known: the record type is known and no reserved flag is set. */
+static int record_is_known(const storage_record *rec)
+{
+    return rec->record_type >= STORAGE_RECORD_TYPE_LIGHT &&
+           rec->record_type <= STORAGE_RECORD_TYPE_START &&
+           (rec->flags & ~STORAGE_FLAGS_KNOWN) == 0;
+}
+
+/* name_is_simulated: file_name starts with STORAGE_LOG_SIMULATED_PREFIX. */
+static int name_is_simulated(const char *file_name)
+{
+    return strncmp(file_name, STORAGE_LOG_SIMULATED_PREFIX,
+                   sizeof STORAGE_LOG_SIMULATED_PREFIX - 1) == 0;
+}
+
+/*
+ * check_tail: read and decode the last record of a non-empty file, and
+ * check this writer continues it: the same SIMULATED flag, and
+ * next_sequence one past its sequence. EINTR is retried.
+ */
+static storage_log_result check_tail(int fd, off_t size_bytes,
+                                     uint64_t next_sequence, int simulated,
+                                     const storage_log_sys *sys)
+{
+    uint8_t tail[STORAGE_RECORD_SIZE_BYTES];
+    storage_record last;
+    ssize_t n;
+
+    do {
+        n = sys->pread(fd, tail, sizeof tail,
+                       size_bytes - STORAGE_RECORD_SIZE_BYTES);
+    } while (n < 0 && errno == EINTR);
+    if (n < 0)
+        return log_os_error(STORAGE_LOG_STAGE_READ_TAIL, errno);
+    if ((size_t)n != sizeof tail ||
+        storage_record_decode(tail, &last) != STORAGE_RECORD_OK ||
+        !record_is_known(&last))
+        return log_status(STORAGE_LOG_BAD_TAIL);
+    if (((last.flags & STORAGE_FLAG_SIMULATED) != 0) != simulated)
+        return log_status(STORAGE_LOG_SIMULATED_MISMATCH);
+    if (last.sequence == UINT64_MAX || last.sequence + 1 != next_sequence)
+        return log_status(STORAGE_LOG_SEQUENCE);
+    return log_ok();
+}
+
 /*
  * storage_log_open_sys: open the directory, open or create the file in it,
- * check the file holds whole records, sync the directory so the name is
- * durable, then close the directory. On failure everything opened here is
- * closed and the first error is returned; cleanup close errors after an
- * earlier error are not reported, because the earlier error is the cause.
+ * check the file holds whole records and that this writer continues its
+ * last record, sync the directory so the name is durable, then close the
+ * directory. On failure everything opened here is closed and the first
+ * error is returned; cleanup close errors after an earlier error are not
+ * reported, because the earlier error is the cause.
  */
 storage_log_result storage_log_open_sys(storage_log_writer *w,
                                         const char *dir_path,
@@ -101,7 +150,11 @@ storage_log_result storage_log_open_sys(storage_log_writer *w,
 
     if (w == NULL || dir_path == NULL || file_name == NULL || sys == NULL)
         return log_status(STORAGE_LOG_ARGUMENT);
+    if (w->is_open)
+        return log_status(STORAGE_LOG_ALREADY_OPEN);
     w->fd = -1;
+    if (name_is_simulated(file_name) != (simulated != 0))
+        return log_status(STORAGE_LOG_SIMULATED_MISMATCH);
 
     dir_fd = sys->open_dir(dir_path);
     if (dir_fd < 0)
@@ -120,6 +173,12 @@ storage_log_result storage_log_open_sys(storage_log_writer *w,
         result = log_status(STORAGE_LOG_MISALIGNED);
         goto close_file;
     }
+    if (st.st_size > 0) {
+        result = check_tail(file_fd, st.st_size, next_sequence,
+                            simulated != 0, sys);
+        if (result.status != STORAGE_LOG_OK)
+            goto close_file;
+    }
     if (sys->fsync(dir_fd) != 0) {
         result = log_os_error(STORAGE_LOG_STAGE_SYNC_DIR, errno);
         goto close_file;
@@ -130,6 +189,7 @@ storage_log_result storage_log_open_sys(storage_log_writer *w,
         return result;
     }
 
+    w->is_open = 1;
     w->fd = file_fd;
     w->simulated = simulated != 0;
     w->failed = 0;
@@ -195,8 +255,18 @@ storage_log_result storage_log_flush(storage_log_writer *w)
     return result;
 }
 
-/* storage_log_append: check rec, encode it into the batch, and flush a
- * full batch. */
+/* batch_due: records are buffered and the oldest has waited at least
+ * STORAGE_LOG_FLUSH_INTERVAL_NS by now_monotonic_ns. */
+static int batch_due(const storage_log_writer *w, uint64_t now_monotonic_ns)
+{
+    return w->buffered_records > 0 &&
+           now_monotonic_ns >= w->oldest_buffered_ns &&
+           now_monotonic_ns - w->oldest_buffered_ns >=
+               STORAGE_LOG_FLUSH_INTERVAL_NS;
+}
+
+/* storage_log_append: check rec, encode it into the batch, and flush the
+ * batch when it is full or its oldest record is due. */
 storage_log_result storage_log_append(storage_log_writer *w,
                                       const storage_record *rec,
                                       uint64_t now_monotonic_ns)
@@ -210,9 +280,7 @@ storage_log_result storage_log_append(storage_log_writer *w,
     if (result.status != STORAGE_LOG_OK)
         return result;
 
-    if (rec->record_type < STORAGE_RECORD_TYPE_LIGHT ||
-        rec->record_type > STORAGE_RECORD_TYPE_START ||
-        (rec->flags & ~STORAGE_FLAGS_KNOWN) != 0)
+    if (!record_is_known(rec))
         return log_status(STORAGE_LOG_BAD_RECORD);
     rec_simulated = (rec->flags & STORAGE_FLAG_SIMULATED) != 0;
     if (rec_simulated != w->simulated)
@@ -228,7 +296,8 @@ storage_log_result storage_log_append(storage_log_writer *w,
     w->buffered_records++;
     w->next_sequence++;
 
-    if (w->buffered_records == STORAGE_LOG_BATCH_RECORDS)
+    if (w->buffered_records == STORAGE_LOG_BATCH_RECORDS ||
+        batch_due(w, now_monotonic_ns))
         return storage_log_flush(w);
     return result;
 }
@@ -240,11 +309,7 @@ storage_log_result storage_log_flush_if_due(storage_log_writer *w,
 {
     storage_log_result result = check_open(w);
 
-    if (result.status != STORAGE_LOG_OK || w->buffered_records == 0)
-        return result;
-    if (now_monotonic_ns < w->oldest_buffered_ns ||
-        now_monotonic_ns - w->oldest_buffered_ns <
-            STORAGE_LOG_FLUSH_INTERVAL_NS)
+    if (result.status != STORAGE_LOG_OK || !batch_due(w, now_monotonic_ns))
         return result;
     return storage_log_flush(w);
 }
@@ -259,13 +324,14 @@ storage_log_result storage_log_close(storage_log_writer *w)
 
     if (w == NULL)
         return log_status(STORAGE_LOG_ARGUMENT);
-    if (w->fd < 0)
+    if (!w->is_open)
         return log_status(STORAGE_LOG_NOT_OPEN);
 
     result = w->failed ? log_status(STORAGE_LOG_FAILED)
                        : storage_log_flush(w);
     if (w->sys->close(w->fd) != 0 && result.status == STORAGE_LOG_OK)
         result = log_os_error(STORAGE_LOG_STAGE_CLOSE_FILE, errno);
+    w->is_open = 0;
     w->fd = -1;
     return result;
 }

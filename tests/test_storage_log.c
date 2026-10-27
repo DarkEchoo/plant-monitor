@@ -223,22 +223,22 @@ static void test_file_full_batch_writes(void)
     uint64_t seq;
 
     make_temp_dir();
-    expect_ok(storage_log_open(&w, temp_dir, "b.log", 0, 1));
+    expect_ok(storage_log_open(&w, temp_dir, "SIMULATED-b.log", 0, 1));
     for (seq = 0; seq < STORAGE_LOG_BATCH_RECORDS - 1; seq++) {
         r = test_record(seq, 1);
         expect_ok(storage_log_append(&w, &r, 0));
     }
-    assert(file_size("b.log") == 0);
+    assert(file_size("SIMULATED-b.log") == 0);
 
     r = test_record(STORAGE_LOG_BATCH_RECORDS - 1, 1);
     expect_ok(storage_log_append(&w, &r, 0));
     assert(w.buffered_records == 0);
-    assert(file_size("b.log") == STORAGE_LOG_BATCH_BYTES);
-    check_bytes_hold(buf, read_file("b.log", buf, sizeof buf), 0,
+    assert(file_size("SIMULATED-b.log") == STORAGE_LOG_BATCH_BYTES);
+    check_bytes_hold(buf, read_file("SIMULATED-b.log", buf, sizeof buf), 0,
                      STORAGE_LOG_BATCH_RECORDS, 1);
 
     expect_ok(storage_log_close(&w));
-    remove_temp_file("b.log");
+    remove_temp_file("SIMULATED-b.log");
     remove_temp_dir();
 }
 
@@ -406,15 +406,15 @@ static void test_file_rejects_bad_records(void)
     assert(file_size("h.log") == STORAGE_RECORD_SIZE_BYTES);
 
     /* A simulated file refuses a record without the SIMULATED flag. */
-    expect_ok(storage_log_open(&w, temp_dir, "i.log", 0, 1));
+    expect_ok(storage_log_open(&w, temp_dir, "SIMULATED-i.log", 0, 1));
     r = test_record(0, 0);
     expect(storage_log_append(&w, &r, 0), STORAGE_LOG_SIMULATED_MISMATCH,
            STORAGE_LOG_STAGE_NONE, 0);
     expect_ok(storage_log_close(&w));
-    assert(file_size("i.log") == 0);
+    assert(file_size("SIMULATED-i.log") == 0);
 
     remove_temp_file("h.log");
-    remove_temp_file("i.log");
+    remove_temp_file("SIMULATED-i.log");
     remove_temp_dir();
 }
 
@@ -458,6 +458,175 @@ static void test_file_arguments(void)
     remove_temp_dir();
 }
 
+/* write_records: replace temp_dir/name with records encoded from r[0..n). */
+static void write_records(const char *name, const storage_record *r,
+                          size_t n)
+{
+    uint8_t buf[FAKE_WRITTEN_CAP];
+    size_t i;
+
+    assert(n * STORAGE_RECORD_SIZE_BYTES <= sizeof buf);
+    for (i = 0; i < n; i++)
+        assert(storage_record_encode(
+                   &r[i], buf + i * STORAGE_RECORD_SIZE_BYTES) ==
+               STORAGE_RECORD_OK);
+    write_file(name, buf, n * STORAGE_RECORD_SIZE_BYTES);
+}
+
+/* expect_open_refused: open fails with status and leaves the file as it
+ * was. */
+static void expect_open_refused(const char *name, uint64_t next_sequence,
+                                int simulated, storage_log_status status)
+{
+    static storage_log_writer w;
+    uint8_t before[FAKE_WRITTEN_CAP];
+    uint8_t after[FAKE_WRITTEN_CAP];
+    size_t before_len = read_file(name, before, sizeof before);
+
+    expect(storage_log_open(&w, temp_dir, name, next_sequence, simulated),
+           status, STORAGE_LOG_STAGE_NONE, 0);
+    assert(!w.is_open);
+    assert(w.fd == -1);
+    assert(read_file(name, after, sizeof after) == before_len);
+    assert(memcmp(after, before, before_len) == 0);
+}
+
+/* FILE: a writer that was never opened is closed, not open on fd 0
+ * (review finding 1). */
+static void test_file_zero_writer_not_open(void)
+{
+    static storage_log_writer w;  /* all zeros, never opened */
+    storage_record r = test_record(0, 0);
+
+    assert(!w.is_open);
+    expect(storage_log_append(&w, &r, 0), STORAGE_LOG_NOT_OPEN,
+           STORAGE_LOG_STAGE_NONE, 0);
+    expect(storage_log_flush(&w), STORAGE_LOG_NOT_OPEN,
+           STORAGE_LOG_STAGE_NONE, 0);
+    expect(storage_log_flush_if_due(&w, UINT64_MAX), STORAGE_LOG_NOT_OPEN,
+           STORAGE_LOG_STAGE_NONE, 0);
+    expect(storage_log_close(&w), STORAGE_LOG_NOT_OPEN,
+           STORAGE_LOG_STAGE_NONE, 0);
+    assert(w.buffered_records == 0);
+}
+
+/* FILE: opening an open writer is refused and keeps the first file and its
+ * buffered records (review finding 2). */
+static void test_file_open_twice_refused(void)
+{
+    static storage_log_writer w;
+    uint8_t buf[FAKE_WRITTEN_CAP];
+    char path[PATH_CAP];
+    struct stat st;
+    storage_record r = test_record(0, 0);
+    int fd;
+
+    make_temp_dir();
+    expect_ok(storage_log_open(&w, temp_dir, "x.log", 0, 0));
+    expect_ok(storage_log_append(&w, &r, 0));
+    fd = w.fd;
+
+    expect(storage_log_open(&w, temp_dir, "y.log", 5, 0),
+           STORAGE_LOG_ALREADY_OPEN, STORAGE_LOG_STAGE_NONE, 0);
+    assert(w.is_open);
+    assert(w.fd == fd);
+    assert(w.buffered_records == 1);
+    assert(w.next_sequence == 1);
+    file_path(path, sizeof path, "y.log");
+    assert(stat(path, &st) == -1 && errno == ENOENT);
+
+    expect_ok(storage_log_close(&w));
+    assert(fd_is_closed(fd));
+    check_bytes_hold(buf, read_file("x.log", buf, sizeof buf), 0, 1, 0);
+
+    remove_temp_file("x.log");
+    remove_temp_dir();
+}
+
+/* FILE: reopening checks the file's last record: its SIMULATED flag must
+ * match and next_sequence must follow it (review findings 3 and 4). */
+static void test_file_reopen_checks_tail(void)
+{
+    storage_record recs[2];
+    uint8_t two[2 * STORAGE_RECORD_SIZE_BYTES];
+
+    make_temp_dir();
+
+    /* Live records 0-1: only next_sequence 2 continues them. */
+    recs[0] = test_record(0, 0);
+    recs[1] = test_record(1, 0);
+    write_records("plant-k.log", recs, 2);
+    expect_open_refused("plant-k.log", 0, 0, STORAGE_LOG_SEQUENCE);
+    expect_open_refused("plant-k.log", 1, 0, STORAGE_LOG_SEQUENCE);
+    expect_open_refused("plant-k.log", 3, 0, STORAGE_LOG_SEQUENCE);
+
+    /* A live record in a SIMULATED- file, and the reverse. */
+    write_records("SIMULATED-plant-l.log", recs, 2);
+    expect_open_refused("SIMULATED-plant-l.log", 2, 1,
+                        STORAGE_LOG_SIMULATED_MISMATCH);
+    recs[0] = test_record(0, 1);
+    recs[1] = test_record(1, 1);
+    write_records("plant-m.log", recs, 2);
+    expect_open_refused("plant-m.log", 2, 0,
+                        STORAGE_LOG_SIMULATED_MISMATCH);
+
+    /* A last record that does not decode, or has an unknown type. */
+    recs[0] = test_record(0, 0);
+    assert(storage_record_encode(&recs[0], two) == STORAGE_RECORD_OK);
+    memset(two + STORAGE_RECORD_SIZE_BYTES, 0x5A, STORAGE_RECORD_SIZE_BYTES);
+    write_file("plant-n.log", two, sizeof two);
+    expect_open_refused("plant-n.log", 1, 0, STORAGE_LOG_BAD_TAIL);
+    expect_open_refused("plant-n.log", 2, 0, STORAGE_LOG_BAD_TAIL);
+    recs[0] = test_record(0, 0);
+    recs[0].record_type = STORAGE_RECORD_TYPE_START + 1;
+    write_records("plant-o.log", recs, 1);
+    expect_open_refused("plant-o.log", 1, 0, STORAGE_LOG_BAD_TAIL);
+
+    /* No sequence follows UINT64_MAX. */
+    recs[0] = test_record(0, 0);
+    recs[0].sequence = UINT64_MAX;
+    write_records("plant-p.log", recs, 1);
+    expect_open_refused("plant-p.log", 0, 0, STORAGE_LOG_SEQUENCE);
+
+    remove_temp_file("plant-k.log");
+    remove_temp_file("SIMULATED-plant-l.log");
+    remove_temp_file("plant-m.log");
+    remove_temp_file("plant-n.log");
+    remove_temp_file("plant-o.log");
+    remove_temp_file("plant-p.log");
+    remove_temp_dir();
+}
+
+/* FILE: append itself writes a batch whose oldest record has waited 60 s,
+ * so a caller that only appends never holds records longer
+ * (review finding 9; design.md "at least every 60 seconds"). */
+static void test_file_append_flushes_overdue(void)
+{
+    static storage_log_writer w;
+    const uint64_t t0 = 5 * NS_PER_SEC;
+    uint8_t buf[FAKE_WRITTEN_CAP];
+    storage_record r;
+
+    make_temp_dir();
+    expect_ok(storage_log_open(&w, temp_dir, "q.log", 0, 0));
+
+    r = test_record(0, 0);
+    expect_ok(storage_log_append(&w, &r, t0));
+    r = test_record(1, 0);
+    expect_ok(storage_log_append(&w, &r, t0 + 60 * NS_PER_SEC - 1));
+    assert(w.buffered_records == 2);
+    assert(file_size("q.log") == 0);
+
+    r = test_record(2, 0);
+    expect_ok(storage_log_append(&w, &r, t0 + 60 * NS_PER_SEC));
+    assert(w.buffered_records == 0);
+    check_bytes_hold(buf, read_file("q.log", buf, sizeof buf), 0, 3, 0);
+
+    expect_ok(storage_log_close(&w));
+    remove_temp_file("q.log");
+    remove_temp_dir();
+}
+
 /* ---------- SIMULATED tests: scripted syscall failures ---------- */
 
 /* Fake syscall state: scripted results, then a record of each call. */
@@ -466,6 +635,11 @@ typedef struct {
     int open_file_errno;    /* nonzero: open_append_at fails */
     int fstat_errno;        /* nonzero: fstat fails */
     off_t existing_bytes;   /* size fstat reports */
+    int file_fd;            /* descriptor open_append_at hands out */
+    int pread_eintr_count;  /* first n preads fail with EINTR */
+    int pread_errno;        /* nonzero: pread fails after the EINTRs */
+    size_t pread_len_bytes; /* byte count pread reports, at most 48 */
+    uint8_t tail[STORAGE_RECORD_SIZE_BYTES];  /* what pread returns */
     int fsync_errno;        /* nonzero: fsync (of the directory) fails */
     int write_eintr_count;  /* first n writes fail with EINTR */
     size_t write_chunk;     /* nonzero: each write accepts at most this */
@@ -478,6 +652,8 @@ typedef struct {
     unsigned open_dir_calls;
     unsigned open_file_calls;
     unsigned fstat_calls;
+    unsigned pread_calls;
+    off_t pread_offset;
     unsigned write_calls;
     unsigned fdatasync_calls;
     unsigned fsync_calls;
@@ -497,6 +673,8 @@ static void fake_reset(void)
 {
     memset(&fake, 0, sizeof fake);
     fake.close_fail_fd = -1;
+    fake.file_fd = FAKE_FILE_FD;
+    fake.pread_len_bytes = STORAGE_RECORD_SIZE_BYTES;
 }
 
 /* fake_open_dir: hand out FAKE_DIR_FD, or fail as scripted. */
@@ -521,7 +699,7 @@ static int fake_open_append_at(int dir_fd, const char *name)
         errno = fake.open_file_errno;
         return -1;
     }
-    return FAKE_FILE_FD;
+    return fake.file_fd;
 }
 
 /* fake_fstat: report existing_bytes, or fail as scripted. */
@@ -538,10 +716,31 @@ static int fake_fstat(int fd, struct stat *st)
     return 0;
 }
 
+/* fake_pread: EINTR, fail, or fill buf with the whole tail but report
+ * pread_len_bytes, so a short read is refused by its length alone. */
+static ssize_t fake_pread(int fd, void *buf, size_t len, off_t offset)
+{
+    assert(fd == fake.file_fd);
+    assert(len == STORAGE_RECORD_SIZE_BYTES);
+    fake.pread_calls++;
+    fake.pread_offset = offset;
+    if (fake.pread_eintr_count > 0) {
+        fake.pread_eintr_count--;
+        errno = EINTR;
+        return -1;
+    }
+    if (fake.pread_errno != 0) {
+        errno = fake.pread_errno;
+        return -1;
+    }
+    memcpy(buf, fake.tail, sizeof fake.tail);
+    return (ssize_t)fake.pread_len_bytes;
+}
+
 /* fake_write: EINTR, fail, or accept up to write_chunk bytes. */
 static ssize_t fake_write(int fd, const void *buf, size_t len)
 {
-    assert(fd == FAKE_FILE_FD);
+    assert(fd == fake.file_fd);
     fake.write_calls++;
     if (fake.write_eintr_count > 0) {
         fake.write_eintr_count--;
@@ -598,7 +797,7 @@ static int fake_close(int fd)
 }
 
 static const storage_log_sys fake_sys = {
-    fake_open_dir, fake_open_append_at, fake_fstat, fake_write,
+    fake_open_dir, fake_open_append_at, fake_fstat, fake_pread, fake_write,
     fake_fdatasync, fake_fsync, fake_close
 };
 
@@ -633,6 +832,7 @@ static void test_sim_open_sequence(void)
     assert(fake.open_file_calls == 1);
     assert(fake.open_file_dir_fd == FAKE_DIR_FD);
     assert(fake.fstat_calls == 1);
+    assert(fake.pread_calls == 0);  /* empty file: no last record */
     assert(fake.fsync_calls == 1 && fake.fsync_fd == FAKE_DIR_FD);
     assert(fake.close_calls == 1 && fake.closed_fds[0] == FAKE_DIR_FD);
     assert(w.fd == FAKE_FILE_FD);
@@ -676,6 +876,7 @@ static void test_sim_open_failures(void)
            STORAGE_LOG_STAGE_NONE, 0);
     assert(w.fd == -1 && fake.close_calls == 2);
     assert(fake.fsync_calls == 0);
+    assert(fake.pread_calls == 0);
 
     fake_reset();
     fake.fsync_errno = EIO;
@@ -837,6 +1038,146 @@ static void test_sim_close_failure(void)
     assert(w.fd == -1);
 }
 
+/* fake_tail: script the fake file to end with record seq. */
+static void fake_tail(uint64_t seq, int simulated)
+{
+    storage_record r = test_record(seq, simulated);
+
+    fake.existing_bytes = 3 * STORAGE_RECORD_SIZE_BYTES;
+    assert(storage_record_encode(&r, fake.tail) == STORAGE_RECORD_OK);
+}
+
+/* SIMULATED: descriptor 0 is a valid log descriptor (review finding 1). */
+static void test_sim_fd_zero_is_open(void)
+{
+    static storage_log_writer w;
+
+    fake_reset();
+    fake.file_fd = 0;
+    expect_ok(open_fake(&w, 0));
+    assert(w.is_open && w.fd == 0);
+    append_n(&w, 0, 1);
+    expect_ok(storage_log_close(&w));
+    assert(fake.written_len == STORAGE_RECORD_SIZE_BYTES);
+    assert(fake.fdatasync_fd == 0);
+    assert(fake.closed_fds[fake.close_calls - 1] == 0);
+    assert(!w.is_open && w.fd == -1);
+}
+
+/* SIMULATED: a second open makes no system call (review finding 2). */
+static void test_sim_open_twice_no_calls(void)
+{
+    static storage_log_writer w;
+    unsigned dirs;
+
+    fake_reset();
+    expect_ok(open_fake(&w, 0));
+    append_n(&w, 0, 2);
+    dirs = fake.open_dir_calls;
+    expect(open_fake(&w, 9), STORAGE_LOG_ALREADY_OPEN,
+           STORAGE_LOG_STAGE_NONE, 0);
+    assert(fake.open_dir_calls == dirs);
+    assert(fake.open_file_calls == 1 && fake.close_calls == 1);
+    assert(w.buffered_records == 2 && w.next_sequence == 2);
+    expect_ok(storage_log_close(&w));
+    check_bytes_hold(fake.written, fake.written_len, 0, 2, 0);
+}
+
+/* SIMULATED: the SIMULATED- name prefix must match the mode, checked
+ * before any system call (review finding 3). */
+static void test_sim_name_prefix(void)
+{
+    static storage_log_writer w;
+
+    fake_reset();
+    expect(storage_log_open_sys(&w, "/fake-dir", "plant-0.log", 0, 1,
+                                &fake_sys),
+           STORAGE_LOG_SIMULATED_MISMATCH, STORAGE_LOG_STAGE_NONE, 0);
+    expect(storage_log_open_sys(&w, "/fake-dir", "SIMULATED-plant-0.log",
+                                0, 0, &fake_sys),
+           STORAGE_LOG_SIMULATED_MISMATCH, STORAGE_LOG_STAGE_NONE, 0);
+    /* The prefix is case-sensitive and must start the name. */
+    expect(storage_log_open_sys(&w, "/fake-dir", "simulated-plant-0.log",
+                                0, 1, &fake_sys),
+           STORAGE_LOG_SIMULATED_MISMATCH, STORAGE_LOG_STAGE_NONE, 0);
+    expect(storage_log_open_sys(&w, "/fake-dir", "x-SIMULATED-plant-0.log",
+                                0, 1, &fake_sys),
+           STORAGE_LOG_SIMULATED_MISMATCH, STORAGE_LOG_STAGE_NONE, 0);
+    assert(fake.open_dir_calls == 0 && fake.close_calls == 0);
+    assert(!w.is_open && w.fd == -1);
+
+    expect_ok(storage_log_open_sys(&w, "/fake-dir", "SIMULATED-plant-0.log",
+                                   0, 1, &fake_sys));
+    expect_ok(storage_log_close(&w));
+}
+
+/* SIMULATED: the last record is read at size - 48; EINTR is retried and
+ * every failure closes the file, then the directory (review finding 3). */
+static void test_sim_tail_read(void)
+{
+    static storage_log_writer w;
+
+    fake_reset();
+    fake_tail(4, 0);
+    fake.pread_eintr_count = 2;
+    expect_ok(open_fake(&w, 5));
+    assert(fake.pread_calls == 3);
+    assert(fake.pread_offset == 2 * STORAGE_RECORD_SIZE_BYTES);
+    assert(w.file_size_bytes == 3 * STORAGE_RECORD_SIZE_BYTES);
+    expect_ok(storage_log_close(&w));
+
+    fake_reset();
+    fake_tail(4, 0);
+    fake.pread_errno = EIO;
+    expect(open_fake(&w, 5), STORAGE_LOG_OS_ERROR,
+           STORAGE_LOG_STAGE_READ_TAIL, EIO);
+    assert(!w.is_open && w.fd == -1);
+    assert(fake.fsync_calls == 0);
+    assert(fake.close_calls == 2);
+    assert(fake.closed_fds[0] == FAKE_FILE_FD);
+    assert(fake.closed_fds[1] == FAKE_DIR_FD);
+
+    fake_reset();
+    fake_tail(4, 0);
+    fake.pread_len_bytes = STORAGE_RECORD_SIZE_BYTES - 1;
+    expect(open_fake(&w, 5), STORAGE_LOG_BAD_TAIL,
+           STORAGE_LOG_STAGE_NONE, 0);
+    assert(fake.close_calls == 2 && fake.fsync_calls == 0);
+
+    fake_reset();
+    fake_tail(4, 0);
+    expect(open_fake(&w, 4), STORAGE_LOG_SEQUENCE,
+           STORAGE_LOG_STAGE_NONE, 0);
+    assert(fake.close_calls == 2 && fake.fsync_calls == 0);
+
+    fake_reset();
+    fake_tail(4, 1);
+    expect(open_fake(&w, 5), STORAGE_LOG_SIMULATED_MISMATCH,
+           STORAGE_LOG_STAGE_NONE, 0);
+    assert(fake.close_calls == 2 && fake.fsync_calls == 0);
+}
+
+/* SIMULATED: an overdue flush from append that fails is sticky like any
+ * other (review finding 9). */
+static void test_sim_append_overdue_failure(void)
+{
+    static storage_log_writer w;
+    storage_record r;
+
+    fake_reset();
+    expect_ok(open_fake(&w, 0));
+    r = test_record(0, 0);
+    expect_ok(storage_log_append(&w, &r, 0));
+    fake.fdatasync_errno = EIO;
+    r = test_record(1, 0);
+    expect(storage_log_append(&w, &r, STORAGE_LOG_FLUSH_INTERVAL_NS),
+           STORAGE_LOG_OS_ERROR, STORAGE_LOG_STAGE_SYNC, EIO);
+    assert(w.failed);
+    assert(fake.written_len == 2 * STORAGE_RECORD_SIZE_BYTES);
+    expect(storage_log_close(&w), STORAGE_LOG_FAILED,
+           STORAGE_LOG_STAGE_NONE, 0);
+}
+
 /* main: run every storage log test; abort on the first failure. */
 int main(void)
 {
@@ -849,6 +1190,10 @@ int main(void)
     test_file_missing_dir();
     test_file_rejects_bad_records();
     test_file_arguments();
+    test_file_zero_writer_not_open();
+    test_file_open_twice_refused();
+    test_file_reopen_checks_tail();
+    test_file_append_flushes_overdue();
 
     test_sim_open_sequence();
     test_sim_open_failures();
@@ -858,6 +1203,11 @@ int main(void)
     test_sim_sync_failure_is_sticky();
     test_sim_close_flush_failure();
     test_sim_close_failure();
+    test_sim_fd_zero_is_open();
+    test_sim_open_twice_no_calls();
+    test_sim_name_prefix();
+    test_sim_tail_read();
+    test_sim_append_overdue_failure();
 
     puts("storage log tests passed (test-built records; temporary files "
          "and SIMULATED syscall failures; no sensor used)");
