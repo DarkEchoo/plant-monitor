@@ -21,8 +21,10 @@
  * layout coverage, not to look like a real reading. Bytes 0-43 are written
  * by hand from the design.md table. The CRC was computed independently of
  * this code with:
- *   python3 -c "import zlib; print(hex(zlib.crc32(bytes(...bytes 0-43...))))"
- * which printed 0x990f76c6.
+ *   python3 -c "import zlib; print(hex(zlib.crc32(bytes.fromhex(
+ *     '504c4e540102060008070605040302011817161514131211'
+ *     '282726252423222134333231020a050444434241'))))"
+ * which prints 0x990f76c6.
  */
 static const uint8_t layout_bytes[STORAGE_RECORD_SIZE_BYTES] = {
     0x50, 0x4c, 0x4e, 0x54,                         /* 0-3   "PLNT" */
@@ -198,6 +200,15 @@ static void test_bad_magic(void)
         assert(storage_record_decode(buf, &out) ==
                STORAGE_RECORD_BAD_MAGIC);
         assert(is_sentinel(&out));
+
+        /* Bad magic wins over a bad version, with or without a valid CRC. */
+        buf[4] = 2;
+        assert(storage_record_decode(buf, &out) ==
+               STORAGE_RECORD_BAD_MAGIC);
+        reseal_crc(buf);
+        assert(storage_record_decode(buf, &out) ==
+               STORAGE_RECORD_BAD_MAGIC);
+        assert(is_sentinel(&out));
     }
 }
 
@@ -213,6 +224,12 @@ static void test_bad_version(void)
 
         memcpy(buf, layout_bytes, sizeof(buf));
         buf[4] = bad_versions[i];
+
+        /* Bad version wins over the now-stale CRC. */
+        assert(storage_record_decode(buf, &out) ==
+               STORAGE_RECORD_BAD_VERSION);
+        assert(is_sentinel(&out));
+
         reseal_crc(buf);
         assert(storage_record_decode(buf, &out) ==
                STORAGE_RECORD_BAD_VERSION);
@@ -246,10 +263,12 @@ static void test_arguments_rejected(void)
     storage_record r = layout_record();
     storage_record out = sentinel_record();
     uint8_t buf[STORAGE_RECORD_SIZE_BYTES];
+    uint8_t untouched[STORAGE_RECORD_SIZE_BYTES];
 
     memset(buf, 0xAA, sizeof(buf));
+    memset(untouched, 0xAA, sizeof(untouched));
     assert(storage_record_encode(NULL, buf) == STORAGE_RECORD_ARGUMENT);
-    assert(buf[0] == 0xAA && buf[47] == 0xAA);
+    assert(memcmp(buf, untouched, sizeof(buf)) == 0);
     assert(storage_record_encode(&r, NULL) == STORAGE_RECORD_ARGUMENT);
     assert(storage_record_decode(NULL, &out) == STORAGE_RECORD_ARGUMENT);
     assert(is_sentinel(&out));

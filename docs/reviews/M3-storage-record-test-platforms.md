@@ -5,6 +5,7 @@
 | Author | Michael (`src/storage/`, branch `michael/storage-record`, stacked on `michael/storage-design` at `b540816`) |
 | Scope | Fixed 48-byte record encode/decode, CRC-32, and magic and version checks only |
 | Tested tree | Uncommitted working tree from Michael's Mac, copied to `/tmp/storage-record-test.Vu3XpR` on the Pi (44 files, SHA-256 identical to the Mac copy). `~/plant-monitor` on the Pi was not changed. |
+| Matching commit | The 44 tested files match commit `d3c26c8` by SHA-256 checksum. The only files in `d3c26c8` that were not tested are `transcripts/` and this note. |
 | Date | 2026-10-26 |
 
 ## Results
