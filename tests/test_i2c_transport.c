@@ -722,9 +722,9 @@ static void test_status_names(void)
 }
 
 /*
- * test_stored_status_codes: these numbers are stored on disk (storage
- * record byte 36, docs/design.md), so they must never change. A renumbered
- * or reordered enum fails here.
+ * test_stored_status_codes: these numbers are stored on disk (byte 36 of
+ * the storage record proposed in PR #5), so they must never change. A
+ * renumbered or reordered enum fails here.
  */
 static void test_stored_status_codes(void)
 {

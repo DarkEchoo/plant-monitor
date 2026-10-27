@@ -443,10 +443,9 @@ static void test_stage_names(void)
     }
 }
 
-/* main: run every SIMULATED driver test; abort on the first failure. */
 /*
- * test_stored_stage_codes: these numbers are stored on disk (storage
- * record byte 37, docs/design.md), so they must never change.
+ * test_stored_stage_codes: these numbers are stored on disk (byte 37 of
+ * the storage record proposed in PR #5), so they must never change.
  */
 static void test_stored_stage_codes(void)
 {
@@ -464,6 +463,7 @@ static void test_stored_stage_codes(void)
     assert(SOIL_STAGE_RANGE == 11);
 }
 
+/* main: run every SIMULATED driver test; abort on the first failure. */
 int main(void)
 {
     test_init_sends_documented_sequence();

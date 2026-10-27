@@ -98,9 +98,10 @@
 #define SOIL_CAPACITANCE_MAX_VALID_COUNTS 4095u
 
 /*
- * Stored codes: these values are written to disk (storage record byte 37,
- * docs/design.md), so existing values never change. Add new stages only at
- * the end, with the next unused number.
+ * Stored codes: the storage record proposed in Michael's storage design
+ * (PR #5, docs/design.md) writes these values to disk in byte 37, so
+ * existing values never change. Add new stages only at the end, with the
+ * next unused number.
  */
 typedef enum {
     SOIL_STAGE_NONE = 0,             /* success */

@@ -48,9 +48,10 @@
 #define I2C_ADDRESS_7BIT_MAX 0x7f
 
 /*
- * Stored codes: these values are written to disk (storage record byte 36,
- * docs/design.md), so existing values never change. Add new statuses only
- * at the end, with the next unused number.
+ * Stored codes: the storage record proposed in Michael's storage design
+ * (PR #5, docs/design.md) writes these values to disk in byte 36, so
+ * existing values never change. Add new statuses only at the end, with the
+ * next unused number.
  */
 typedef enum {
     I2C_STATUS_OK = 0,

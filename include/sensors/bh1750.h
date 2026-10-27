@@ -54,9 +54,10 @@
 #define BH1750_H_RES_MAX_WAIT_US 180000u
 
 /*
- * Stored codes: these values are written to disk (storage record byte 37,
- * docs/design.md), so existing values never change. Add new stages only at
- * the end, with the next unused number.
+ * Stored codes: the storage record proposed in Michael's storage design
+ * (PR #5, docs/design.md) writes these values to disk in byte 37, so
+ * existing values never change. Add new stages only at the end, with the
+ * next unused number.
  */
 typedef enum {
     BH1750_STAGE_NONE = 0,             /* success */
