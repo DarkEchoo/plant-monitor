@@ -168,8 +168,8 @@ static void test_failure_details(void)
     assert(strstr(c.text, want) != NULL);
     assert(strstr(c.text, " wall_ns=none mono_ns=5180000000 ") != NULL);
     assert(strstr(c.text, " clock_trust=UNKNOWN ") != NULL);
-    assert(strstr(c.text, " wall_errno=22") != NULL);
-    assert(strstr(c.text, " trust_errno=1") != NULL);
+    assert(strstr(c.text, " wall_errno=22 ") != NULL);
+    assert(strstr(c.text, " trust_errno=1\n") != NULL);
     assert(strstr(c.text, "requested_len") == NULL);
 
     s = light_valid();
@@ -187,8 +187,35 @@ static void test_failure_details(void)
                           "requested_len=2 transferred_len=1 "
                           "rejected_value=none ") != NULL);
     assert(strstr(c.text, " mono_ns=none ") != NULL);
-    assert(strstr(c.text, " mono_errno=") != NULL);
+    assert(snprintf(want, sizeof want, " mono_errno=%d\n", EOVERFLOW) <
+           (int)sizeof want);
+    assert(strstr(c.text, want) != NULL);
     assert(strstr(c.text, "errno_text") == NULL);
+}
+
+/*
+ * test_unexpected_values: out-of-range enums print UNKNOWN or INVALID,
+ * never a real unit, phase or trust state, and a missing stage name
+ * prints stage=none.
+ */
+static void test_unexpected_values(void)
+{
+    capture_sample s = light_valid();
+    captured c;
+
+    s.unit = (capture_unit)9;
+    s.phase = (capture_phase)9;
+    s.clock_trust = (capture_clock_trust)9;
+    s.stage_name = NULL;
+    c = log_sample(&s);
+    assert(c.result == 0);
+    assert(strstr(c.text, " phase=UNKNOWN ") != NULL);
+    assert(strstr(c.text, " unit=UNKNOWN ") != NULL);
+    assert(strstr(c.text, " stage=none ") != NULL);
+    assert(strstr(c.text, " clock_trust=INVALID ") != NULL);
+    assert(strstr(c.text, "trust_errno") == NULL);
+    assert(strstr(c.text, "raw_counts") == NULL);
+    assert(strstr(c.text, "millilux") == NULL);
 }
 
 /* test_heartbeat_line: the whole line for a degraded heartbeat. */
@@ -241,6 +268,28 @@ static void test_exit_lines(void)
                         "errno=0 open=OK open_errno=0 cleanup_errno=0 "
                         "close=OK close_errno=0\n") == 0);
 
+    /* No open was attempted (USAGE, or a clock or sink failure first):
+     * the zeroed open result must not read as a successful open. */
+    memset(&o, 0, sizeof o);
+    o.exit = CAPTURE_EXIT_USAGE;
+    f = open_tmp();
+    assert(capture_log_exit(f, CAPTURE_SENSOR_LIGHT, 0, &o) == 0);
+    read_back(f, text, sizeof text);
+    assert(strcmp(text, "LIVE sensor=light event=exit result=USAGE "
+                        "errno=0 open=not_attempted open_errno=none "
+                        "cleanup_errno=none close=not_attempted "
+                        "close_errno=none\n") == 0);
+
+    memset(&o, 0, sizeof o);
+    o.exit = CAPTURE_EXIT_CLOCK_FAILED;
+    o.exit_errno = EINVAL;
+    f = open_tmp();
+    assert(capture_log_exit(f, CAPTURE_SENSOR_SOIL, 1, &o) == 0);
+    read_back(f, text, sizeof text);
+    assert(strstr(text, " result=CLOCK_FAILED errno=22 errno_text=\"") !=
+           NULL);
+    assert(strstr(text, " open=not_attempted ") != NULL);
+
     memset(&o, 0, sizeof o);
     o.exit = CAPTURE_EXIT_OPEN_FAILED;
     o.exit_errno = ENOENT;
@@ -250,10 +299,10 @@ static void test_exit_lines(void)
     f = open_tmp();
     assert(capture_log_exit(f, CAPTURE_SENSOR_SOIL, 1, &o) == 0);
     read_back(f, text, sizeof text);
-    assert(strcmp(text, "SIMULATED sensor=soil event=exit "
-                        "result=OPEN_FAILED errno=2 open=OS_ERROR "
-                        "open_errno=2 cleanup_errno=5 "
-                        "close=not_attempted close_errno=0\n") == 0);
+    assert(strstr(text, "SIMULATED sensor=soil event=exit "
+                        "result=OPEN_FAILED errno=2 errno_text=\"") == text);
+    assert(strstr(text, " open=OS_ERROR open_errno=2 cleanup_errno=5 "
+                        "close=not_attempted close_errno=none\n") != NULL);
 
     memset(&o, 0, sizeof o);
     o.exit = CAPTURE_EXIT_SINK_FAILED;
@@ -264,13 +313,25 @@ static void test_exit_lines(void)
     f = open_tmp();
     assert(capture_log_exit(f, CAPTURE_SENSOR_LIGHT, 0, &o) == 0);
     read_back(f, text, sizeof text);
-    assert(strstr(text, " result=SINK_FAILED errno=32 ") != NULL);
+    assert(strstr(text, " result=SINK_FAILED errno=32 errno_text=") != NULL);
+    assert(strstr(text, " open=OK ") != NULL);   /* close was attempted */
     assert(strstr(text, " close=OS_ERROR close_errno=5\n") != NULL);
 }
 
-/* test_write_failure: a stream that cannot be written reports EIO. */
+/*
+ * test_write_failure: a stream that cannot be written reports EIO, both
+ * unbuffered and with default (full) buffering, where the error only
+ * shows when the line is flushed.
+ */
 static void test_write_failure(void)
 {
+    capture_sample b = light_valid();
+    FILE *buffered = fopen("/dev/full", "w");
+
+    assert(buffered != NULL);
+    assert(capture_log_sample(buffered, &b) == EIO);
+    (void)fclose(buffered);
+
     capture_sample s = light_valid();
     capture_heartbeat h;
     capture_outcome o;
@@ -302,6 +363,7 @@ int main(void)
     test_valid_light_sample();
     test_rejected_soil_sample();
     test_failure_details();
+    test_unexpected_values();
     test_heartbeat_line();
     test_exit_lines();
     test_write_failure();

@@ -20,9 +20,16 @@
  *   out of the record), the rejected value, both timestamps (none plus
  *   the errno when unavailable) and the clock trust.
  * - heartbeat: the capture_heartbeat fields.
- * - exit: the exit reason and errno, the open and close results.
+ * - exit: the exit reason and errno (with errno_text), and the open and
+ *   close results, or not_attempted.
  *
- * Each function returns 0, or EIO if the stream reports a write error.
+ * Out-of-range enums print UNKNOWN (phase, unit) or INVALID (clock
+ * trust), never a real value; a missing stage name prints stage=none.
+ *
+ * Each function writes and flushes one line, then returns 0, or EIO if
+ * the flush fails or the stream's error indicator is set. A stream that
+ * was already in error makes every later call return EIO. The pointers
+ * must not be NULL.
  */
 
 int capture_log_sample(FILE *out, const capture_sample *sample);

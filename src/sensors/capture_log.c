@@ -10,19 +10,36 @@ static const char *label(int simulated)
     return simulated ? "SIMULATED" : "LIVE";
 }
 
-/* unit_name: the explicit unit of a sample's value. */
+/* unit_name: the explicit unit of a sample's value; UNKNOWN if invalid. */
 static const char *unit_name(capture_unit unit)
 {
-    return unit == CAPTURE_UNIT_MILLILUX ? "millilux" : "raw_counts";
+    switch (unit) {
+    case CAPTURE_UNIT_MILLILUX:
+        return "millilux";
+    case CAPTURE_UNIT_RAW_COUNTS:
+        return "raw_counts";
+    default:
+        return "UNKNOWN";
+    }
 }
 
-/* phase_name: which driver call gave a sample's stage. */
+/* phase_name: which driver call gave a sample's stage; UNKNOWN if invalid. */
 static const char *phase_name(capture_phase phase)
 {
-    return phase == CAPTURE_PHASE_INIT ? "INIT" : "MEASURE";
+    switch (phase) {
+    case CAPTURE_PHASE_INIT:
+        return "INIT";
+    case CAPTURE_PHASE_MEASURE:
+        return "MEASURE";
+    default:
+        return "UNKNOWN";
+    }
 }
 
-/* trust_name: stable text for a clock-trust result. */
+/*
+ * trust_name: stable text for a clock-trust result. UNKNOWN means the
+ * trust check failed; INVALID means an out-of-range value.
+ */
 static const char *trust_name(capture_clock_trust trust)
 {
     switch (trust) {
@@ -30,15 +47,33 @@ static const char *trust_name(capture_clock_trust trust)
         return "TRUSTED";
     case CAPTURE_CLOCK_UNTRUSTED:
         return "UNTRUSTED";
-    default:
+    case CAPTURE_CLOCK_TRUST_UNKNOWN:
         return "UNKNOWN";
+    default:
+        return "INVALID";
     }
 }
 
-/* finish: 0, or EIO if any write to out failed. */
+/*
+ * finish: flush the line, then 0, or EIO if any write to out failed. The
+ * flush matters on a buffered stream, where a write error only appears
+ * when the buffer is written.
+ */
 static int finish(FILE *out)
 {
-    return ferror(out) ? EIO : 0;
+    if (fflush(out) != 0 || ferror(out)) {
+        return EIO;
+    }
+    return 0;
+}
+
+/* print_errno: errno=N, with errno_text when N is nonzero. */
+static void print_errno(FILE *out, const char *key, int err)
+{
+    fprintf(out, " %s=%d", key, err);
+    if (err != 0) {
+        fprintf(out, " %s_text=\"%s\"", key, strerror(err));
+    }
 }
 
 /* print_ns: a timestamp, or none if its clock read failed. */
@@ -88,12 +123,10 @@ int capture_log_sample(FILE *out, const capture_sample *s)
             fputs(" raw_count=none", out);
         }
     }
-    fprintf(out, " stage=%s i2c=%s errno=%d",
-            s->stage_name != NULL ? s->stage_name : "UNKNOWN",
-            i2c_status_name(s->io.status), s->io.os_errno);
-    if (s->io.os_errno != 0) {
-        fprintf(out, " errno_text=\"%s\"", strerror(s->io.os_errno));
-    }
+    fprintf(out, " stage=%s i2c=%s",
+            s->stage_name != NULL ? s->stage_name : "none",
+            i2c_status_name(s->io.status));
+    print_errno(out, "errno", s->io.os_errno);
     if (s->io.status == I2C_STATUS_SHORT_TRANSFER) {
         fprintf(out, " requested_len=%zu transferred_len=%zu",
                 s->io.requested_len, s->io.transferred_len);
@@ -136,21 +169,32 @@ int capture_log_heartbeat(FILE *out, const capture_heartbeat *h)
     return finish(out);
 }
 
-/* capture_log_exit: how the run ended, with the open and close results. */
+/*
+ * capture_log_exit: how the run ended, with the open and close results.
+ * capture_run zeroes the outcome, so a zero open result alone does not
+ * mean the open succeeded. A successful open is always followed by a
+ * close attempt; a failed one leaves a non-OK result; otherwise no open
+ * was attempted (USAGE, or a clock, sink or stop exit before the open).
+ */
 int capture_log_exit(FILE *out, capture_sensor sensor, int is_simulated,
                      const capture_outcome *o)
 {
-    fprintf(out, "%s sensor=%s event=exit result=%s errno=%d open=%s "
-                 "open_errno=%d cleanup_errno=%d",
+    fprintf(out, "%s sensor=%s event=exit result=%s",
             label(is_simulated), capture_sensor_name(sensor),
-            capture_exit_name(o->exit), o->exit_errno,
-            i2c_status_name(o->open_io.status), o->open_io.os_errno,
-            o->open_cleanup_errno);
+            capture_exit_name(o->exit));
+    print_errno(out, "errno", o->exit_errno);
+    if (o->close_attempted || o->open_io.status != I2C_STATUS_OK) {
+        fprintf(out, " open=%s open_errno=%d cleanup_errno=%d",
+                i2c_status_name(o->open_io.status), o->open_io.os_errno,
+                o->open_cleanup_errno);
+    } else {
+        fputs(" open=not_attempted open_errno=none cleanup_errno=none", out);
+    }
     if (o->close_attempted) {
         fprintf(out, " close=%s close_errno=%d\n",
                 i2c_status_name(o->close_io.status), o->close_io.os_errno);
     } else {
-        fputs(" close=not_attempted close_errno=0\n", out);
+        fputs(" close=not_attempted close_errno=none\n", out);
     }
     return finish(out);
 }
