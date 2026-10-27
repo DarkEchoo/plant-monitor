@@ -22,7 +22,9 @@
  *   --help
  *
  * Numbers are decimal; addresses may also be hex (0x23). Options may not
- * repeat. Every other capture_config field keeps its proposed value
+ * repeat, and a value may not start with "--". Arguments are checked in
+ * order, so --help wins only when no earlier argument is an error (as in
+ * sensor-diag). Every other capture_config field keeps its proposed value
  * (capture_config_proposed).
  */
 
@@ -48,6 +50,6 @@ void capture_usage(FILE *out, const char *program);
  * 1 for every failure. PROVISIONAL until the supervisor's needs are
  * agreed; the program also logs capture_exit_name.
  */
-int capture_exit_status(capture_exit exit);
+int capture_exit_status(capture_exit result);
 
 #endif

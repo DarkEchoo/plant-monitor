@@ -2,6 +2,7 @@
 #include "sensors/capture_args.h"
 
 #include <assert.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -16,7 +17,9 @@
 
 #define COUNT_OF(a) (sizeof(a) / sizeof((a)[0]))
 
-/* parse: run the parser on a NULL-terminated list; count error bytes. */
+static char last_err[512];   /* the error text of the last parse() */
+
+/* parse: run the parser on a NULL-terminated list; keep its error text. */
 static capture_args_result parse(char *const *args, capture_config *cfg,
                                  long *err_bytes)
 {
@@ -24,6 +27,7 @@ static capture_args_result parse(char *const *args, capture_config *cfg,
     int argc = 0;
     FILE *err = tmpfile();
     capture_args_result r;
+    size_t n;
 
     assert(err != NULL);
     argv[argc++] = "capture";
@@ -35,6 +39,10 @@ static capture_args_result parse(char *const *args, capture_config *cfg,
     r = capture_parse_args(argc, argv, cfg, err);
     assert(fflush(err) == 0);
     *err_bytes = ftell(err);
+    rewind(err);
+    n = fread(last_err, 1, sizeof last_err - 1, err);
+    assert(!ferror(err));
+    last_err[n] = '\0';
     assert(fclose(err) == 0);
     return r;
 }
@@ -90,7 +98,7 @@ static void test_overrides(void)
 
     assert(parse(light, &cfg, &err_bytes) == CAPTURE_ARGS_RUN);
     assert(cfg.sensor == CAPTURE_SENSOR_LIGHT && cfg.bus_number == 0);
-    assert(cfg.address_7bit == 0x5c);
+    assert(cfg.address_7bit == 0x5c && err_bytes == 0);
     assert(cfg.tick_period_ns == INT64_C(100000000));
     assert(cfg.sample_every_ticks == 1000);
     assert(cfg.backoff_cap_periods == CAPTURE_PROPOSED_BACKOFF_CAP_PERIODS);
@@ -101,6 +109,36 @@ static void test_overrides(void)
     assert(cfg.address_7bit == 0x39);
     assert(cfg.tick_period_ns == INT64_C(3600000000000));
     assert(cfg.sample_every_ticks == 1);
+}
+
+/*
+ * test_address_forms: hex with 0x or 0X, decimal, and a leading 0 read as
+ * decimal (never octal: "035" is 35 = 0x23).
+ */
+static void test_address_forms(void)
+{
+    static const struct {
+        const char *sensor;
+        const char *addr;
+        uint8_t want;
+    } cases[] = {
+        {"light", "035", 0x23}, {"light", "0X5C", 0x5c},
+        {"light", "92", 0x5c}, {"soil", "0x37", 0x37},
+        {"soil", "0x0039", 0x39}, {"soil", "054", 0x36},
+    };
+    size_t i;
+
+    for (i = 0; i < COUNT_OF(cases); i++) {
+        char *const args[] = {
+            "--sensor", (char *)cases[i].sensor, "--bus", "1",
+            "--addr", (char *)cases[i].addr, NULL
+        };
+        capture_config cfg;
+        long err_bytes;
+
+        assert(parse(args, &cfg, &err_bytes) == CAPTURE_ARGS_RUN);
+        assert(cfg.address_7bit == cases[i].want && err_bytes == 0);
+    }
 }
 
 /* test_help: --help wins wherever it appears after valid options. */
@@ -158,10 +196,26 @@ static void test_rejects(void)
     static char *const equals[] = {"--sensor=light", "--bus", "1", NULL};
     static char *const positional[] = {"--sensor", "light", "--bus", "1",
                                        "extra", NULL};
+    static char *const bare_hex[] = {"--sensor", "light", "--bus", "1",
+                                     "--addr", "0x", NULL};
+    static char *const hex_junk[] = {"--sensor", "light", "--bus", "1",
+                                     "--addr", "0x2g", NULL};
+    static char *const hex_wide[] = {"--sensor", "soil", "--bus", "1",
+                                     "--addr", "0x80", NULL};
+    static char *const plus_tick[] = {"--sensor", "light", "--bus", "1",
+                                      "--tick-ms", "+500", NULL};
+    static char *const neg_every[] = {"--sensor", "light", "--bus", "1",
+                                      "--every", "-2", NULL};
+    static char *const empty_tick[] = {"--sensor", "light", "--bus", "1",
+                                       "--tick-ms", "", NULL};
+    static char *const addr_last[] = {"--sensor", "light", "--bus", "1",
+                                      "--addr", NULL};
     static char *const *const cases[] = {
         none, no_sensor, no_bus, bad_sensor, no_value, bad_bus, neg_bus,
-        big_bus, plus_bus, space_every, light_addr, soil_addr, soil_high, tick_low, tick_high,
-        every_zero, every_high, twice, unknown, equals, positional
+        big_bus, plus_bus, space_every, light_addr, soil_addr, soil_high,
+        tick_low, tick_high, every_zero, every_high, twice, unknown,
+        equals, positional, bare_hex, hex_junk, hex_wide, plus_tick,
+        neg_every, empty_tick, addr_last
     };
     size_t i;
 
@@ -176,6 +230,20 @@ static void test_rejects(void)
         assert(err_bytes > 0);
         assert(memcmp(&cfg, &before, sizeof cfg) == 0);
     }
+}
+
+/*
+ * test_option_as_value: an option where a value belongs is reported as a
+ * missing value, not misread as the value ("--sensor --bus 1").
+ */
+static void test_option_as_value(void)
+{
+    static char *const args[] = {"--sensor", "--bus", "1", NULL};
+    capture_config cfg;
+    long err_bytes;
+
+    assert(parse(args, &cfg, &err_bytes) == CAPTURE_ARGS_ERROR);
+    assert(strstr(last_err, "--sensor needs a value") != NULL);
 }
 
 /* test_usage_text: the help names the required options and proposals. */
@@ -195,6 +263,8 @@ static void test_usage_text(void)
     assert(strstr(out, "usage: capture --sensor light|soil --bus N") != NULL);
     assert(strstr(out, "--bus is required") != NULL);
     assert(strstr(out, "PROPOSED") != NULL);
+    assert(strstr(out, "Exit status: 0") != NULL);
+    assert(strstr(out, "hex only for --addr") != NULL);
 }
 
 /* test_exit_status: 0 only for a clean stop, 2 for usage, 1 otherwise. */
@@ -220,8 +290,10 @@ int main(void)
 {
     test_defaults();
     test_overrides();
+    test_address_forms();
     test_help();
     test_rejects();
+    test_option_as_value();
     test_usage_text();
     test_exit_status();
 

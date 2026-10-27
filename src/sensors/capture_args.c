@@ -131,7 +131,8 @@ capture_args_result capture_parse_args(int argc, char *const argv[],
             fprintf(err, "%s: %s given more than once\n", program, opt);
             return CAPTURE_ARGS_ERROR;
         }
-        if (i + 1 >= argc || argv[i + 1] == NULL) {
+        if (i + 1 >= argc || argv[i + 1] == NULL ||
+            strncmp(argv[i + 1], "--", 2) == 0) {
             fprintf(err, "%s: %s needs a value\n", program, opt);
             return CAPTURE_ARGS_ERROR;
         }
@@ -225,17 +226,21 @@ void capture_usage(FILE *out, const char *program)
         "                       (PROPOSED default: light 1, soil 6)\n"
         "  --help               show this text\n"
         "\n"
-        "The rates, backoff and reinitialization policy are PROPOSED values\n"
-        "awaiting agreement, not requirements.\n",
+        "Numbers are decimal; hex only for --addr (0x23). A leading 0 is\n"
+        "decimal. The rates, backoff and reinitialization policy are\n"
+        "PROPOSED values awaiting agreement, not requirements.\n"
+        "\n"
+        "Exit status: 0 after a requested stop, 1 for any failure, 2 for a\n"
+        "usage error.\n",
         program, CAPTURE_ARGS_TICK_MS_MIN, CAPTURE_ARGS_TICK_MS_MAX,
         CAPTURE_ARGS_EVERY_MAX);
 }
 
 /* capture_exit_status: see capture_args.h. */
-int capture_exit_status(capture_exit exit)
+int capture_exit_status(capture_exit result)
 {
-    if (exit == CAPTURE_EXIT_STOPPED) {
+    if (result == CAPTURE_EXIT_STOPPED) {
         return 0;
     }
-    return exit == CAPTURE_EXIT_USAGE ? 2 : 1;
+    return result == CAPTURE_EXIT_USAGE ? 2 : 1;
 }
