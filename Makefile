@@ -38,6 +38,13 @@ CAPTURE_ARGS_HDRS := include/sensors/capture_args.h $(CAPTURE_HDRS)
 CAPTURE_LOG_TEST_TARGET := $(BUILD_DIR)/test_capture_log
 CAPTURE_LOG_SRCS := src/sensors/capture_log.c $(CAPTURE_SRCS)
 CAPTURE_LOG_HDRS := include/sensors/capture_log.h $(CAPTURE_HDRS)
+RECORD_TEST_TARGET := $(BUILD_DIR)/test_storage_record
+RECORD_SRCS := src/storage/record.c src/storage/crc32.c
+RECORD_HDRS := include/storage/record.h include/storage/crc32.h
+LOG_TEST_TARGET := $(BUILD_DIR)/test_storage_log
+LOG_SRCS := src/storage/log_writer.c $(RECORD_SRCS)
+LOG_HDRS := include/storage/log_writer.h src/storage/log_writer_sys.h \
+	$(RECORD_HDRS)
 
 .PHONY: all test asan memcheck clean
 
@@ -94,10 +101,17 @@ $(CAPTURE_LOG_TEST_TARGET): tests/test_capture_log.c $(CAPTURE_LOG_SRCS) \
 	$(CC) $(CFLAGS) tests/test_capture_log.c $(CAPTURE_LOG_SRCS) \
 		-o $(CAPTURE_LOG_TEST_TARGET)
 
+$(RECORD_TEST_TARGET): tests/test_storage_record.c $(RECORD_SRCS) $(RECORD_HDRS) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) tests/test_storage_record.c $(RECORD_SRCS) -o $(RECORD_TEST_TARGET)
+
+$(LOG_TEST_TARGET): tests/test_storage_log.c $(LOG_SRCS) $(LOG_HDRS) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) tests/test_storage_log.c $(LOG_SRCS) -o $(LOG_TEST_TARGET)
+
 test: $(TEST_TARGET) $(TRANSPORT_TEST_TARGET) $(LINUX_TEST_TARGET) \
 	$(BH1750_TEST_TARGET) $(SOIL_TEST_TARGET) $(DIAG_TEST_TARGET) \
 	$(CAPTURE_TEST_TARGET) $(CAPTURE_LINUX_TEST_TARGET) \
-	$(CAPTURE_ARGS_TEST_TARGET) $(CAPTURE_LOG_TEST_TARGET)
+	$(CAPTURE_ARGS_TEST_TARGET) $(CAPTURE_LOG_TEST_TARGET) \
+	$(RECORD_TEST_TARGET) $(LOG_TEST_TARGET)
 	./$(TEST_TARGET)
 	./$(TRANSPORT_TEST_TARGET)
 	./$(LINUX_TEST_TARGET)
@@ -108,6 +122,8 @@ test: $(TEST_TARGET) $(TRANSPORT_TEST_TARGET) $(LINUX_TEST_TARGET) \
 	./$(CAPTURE_LINUX_TEST_TARGET)
 	./$(CAPTURE_ARGS_TEST_TARGET)
 	./$(CAPTURE_LOG_TEST_TARGET)
+	./$(RECORD_TEST_TARGET)
+	./$(LOG_TEST_TARGET)
 
 ASAN_FLAGS := -fsanitize=address,undefined -fno-sanitize-recover=all \
 	-fno-omit-frame-pointer -g
@@ -119,7 +135,8 @@ asan:
 memcheck: $(TEST_TARGET) $(TRANSPORT_TEST_TARGET) $(LINUX_TEST_TARGET) \
 	$(BH1750_TEST_TARGET) $(SOIL_TEST_TARGET) $(DIAG_TEST_TARGET) \
 	$(CAPTURE_TEST_TARGET) $(CAPTURE_LINUX_TEST_TARGET) \
-	$(CAPTURE_ARGS_TEST_TARGET) $(CAPTURE_LOG_TEST_TARGET)
+	$(CAPTURE_ARGS_TEST_TARGET) $(CAPTURE_LOG_TEST_TARGET) \
+	$(RECORD_TEST_TARGET) $(LOG_TEST_TARGET)
 	@if command -v valgrind >/dev/null 2>&1; then \
 		valgrind --leak-check=full --error-exitcode=1 ./$(TEST_TARGET) && \
 		valgrind --leak-check=full --error-exitcode=1 ./$(TRANSPORT_TEST_TARGET) && \
@@ -130,7 +147,9 @@ memcheck: $(TEST_TARGET) $(TRANSPORT_TEST_TARGET) $(LINUX_TEST_TARGET) \
 		valgrind --leak-check=full --error-exitcode=1 ./$(CAPTURE_TEST_TARGET) && \
 		valgrind --leak-check=full --error-exitcode=1 ./$(CAPTURE_LINUX_TEST_TARGET) && \
 		valgrind --leak-check=full --error-exitcode=1 ./$(CAPTURE_ARGS_TEST_TARGET) && \
-		valgrind --leak-check=full --error-exitcode=1 ./$(CAPTURE_LOG_TEST_TARGET); \
+		valgrind --leak-check=full --error-exitcode=1 ./$(CAPTURE_LOG_TEST_TARGET) && \
+		valgrind --leak-check=full --error-exitcode=1 ./$(RECORD_TEST_TARGET) && \
+		valgrind --leak-check=full --error-exitcode=1 ./$(LOG_TEST_TARGET); \
 	else \
 		echo "valgrind is not installed"; exit 1; \
 	fi
