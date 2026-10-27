@@ -22,6 +22,9 @@ DIAG_SRCS := src/sensors/sensor_diag.c src/sensors/bh1750.c \
 	src/sensors/seesaw_soil.c src/sensors/i2c_transport.c
 DIAG_HDRS := include/sensors/sensor_diag.h include/sensors/bh1750.h \
 	include/sensors/seesaw_soil.h include/sensors/i2c_transport.h
+RECORD_TEST_TARGET := $(BUILD_DIR)/test_storage_record
+RECORD_SRCS := src/storage/record.c src/storage/crc32.c
+RECORD_HDRS := include/storage/record.h include/storage/crc32.h
 
 .PHONY: all test asan memcheck clean
 
@@ -59,14 +62,19 @@ $(DIAG_TEST_TARGET): tests/test_sensor_diag.c $(DIAG_SRCS) $(DIAG_HDRS) \
 	$(CC) $(CFLAGS) tests/test_sensor_diag.c $(DIAG_SRCS) \
 		src/sensors/i2c_mock.c -o $(DIAG_TEST_TARGET)
 
+$(RECORD_TEST_TARGET): tests/test_storage_record.c $(RECORD_SRCS) $(RECORD_HDRS) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) tests/test_storage_record.c $(RECORD_SRCS) -o $(RECORD_TEST_TARGET)
+
 test: $(TEST_TARGET) $(TRANSPORT_TEST_TARGET) $(LINUX_TEST_TARGET) \
-	$(BH1750_TEST_TARGET) $(SOIL_TEST_TARGET) $(DIAG_TEST_TARGET)
+	$(BH1750_TEST_TARGET) $(SOIL_TEST_TARGET) $(DIAG_TEST_TARGET) \
+	$(RECORD_TEST_TARGET)
 	./$(TEST_TARGET)
 	./$(TRANSPORT_TEST_TARGET)
 	./$(LINUX_TEST_TARGET)
 	./$(BH1750_TEST_TARGET)
 	./$(SOIL_TEST_TARGET)
 	./$(DIAG_TEST_TARGET)
+	./$(RECORD_TEST_TARGET)
 
 ASAN_FLAGS := -fsanitize=address,undefined -fno-sanitize-recover=all \
 	-fno-omit-frame-pointer -g
@@ -76,14 +84,16 @@ asan:
 	$(MAKE) BUILD_DIR=$(BUILD_DIR)/asan CFLAGS="$(CFLAGS) $(ASAN_FLAGS)" all test
 
 memcheck: $(TEST_TARGET) $(TRANSPORT_TEST_TARGET) $(LINUX_TEST_TARGET) \
-	$(BH1750_TEST_TARGET) $(SOIL_TEST_TARGET) $(DIAG_TEST_TARGET)
+	$(BH1750_TEST_TARGET) $(SOIL_TEST_TARGET) $(DIAG_TEST_TARGET) \
+	$(RECORD_TEST_TARGET)
 	@if command -v valgrind >/dev/null 2>&1; then \
 		valgrind --leak-check=full --error-exitcode=1 ./$(TEST_TARGET) && \
 		valgrind --leak-check=full --error-exitcode=1 ./$(TRANSPORT_TEST_TARGET) && \
 		valgrind --leak-check=full --error-exitcode=1 ./$(LINUX_TEST_TARGET) && \
 		valgrind --leak-check=full --error-exitcode=1 ./$(BH1750_TEST_TARGET) && \
 		valgrind --leak-check=full --error-exitcode=1 ./$(SOIL_TEST_TARGET) && \
-		valgrind --leak-check=full --error-exitcode=1 ./$(DIAG_TEST_TARGET); \
+		valgrind --leak-check=full --error-exitcode=1 ./$(DIAG_TEST_TARGET) && \
+		valgrind --leak-check=full --error-exitcode=1 ./$(RECORD_TEST_TARGET); \
 	else \
 		echo "valgrind is not installed"; exit 1; \
 	fi
