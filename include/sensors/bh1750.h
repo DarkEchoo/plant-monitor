@@ -53,15 +53,20 @@
  */
 #define BH1750_H_RES_MAX_WAIT_US 180000u
 
+/*
+ * Stored codes: these values are written to disk (storage record byte 37,
+ * docs/design.md), so existing values never change. Add new stages only at
+ * the end, with the next unused number.
+ */
 typedef enum {
-    BH1750_STAGE_NONE = 0,       /* success */
-    BH1750_STAGE_ARGUMENT,       /* rejected before any I/O */
-    BH1750_STAGE_POWER_ON,
-    BH1750_STAGE_MTREG_HIGH,
-    BH1750_STAGE_MTREG_LOW,
-    BH1750_STAGE_MEASURE_COMMAND,
-    BH1750_STAGE_WAIT,
-    BH1750_STAGE_READ
+    BH1750_STAGE_NONE = 0,             /* success */
+    BH1750_STAGE_ARGUMENT = 1,         /* rejected before any I/O */
+    BH1750_STAGE_POWER_ON = 2,
+    BH1750_STAGE_MTREG_HIGH = 3,
+    BH1750_STAGE_MTREG_LOW = 4,
+    BH1750_STAGE_MEASURE_COMMAND = 5,
+    BH1750_STAGE_WAIT = 6,
+    BH1750_STAGE_READ = 7
 } bh1750_stage;
 
 typedef struct {

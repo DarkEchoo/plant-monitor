@@ -47,13 +47,20 @@
 
 #define I2C_ADDRESS_7BIT_MAX 0x7f
 
+/*
+ * Stored codes: these values are written to disk (storage record byte 36,
+ * docs/design.md), so existing values never change. Add new statuses only
+ * at the end, with the next unused number.
+ */
 typedef enum {
     I2C_STATUS_OK = 0,
-    I2C_STATUS_INVALID_ARGUMENT,
-    I2C_STATUS_OS_ERROR,        /* a system call failed; see os_errno */
-    I2C_STATUS_SHORT_TRANSFER,  /* bytes moved differ from bytes requested,
-                                   fewer or (backend bug) more */
-    I2C_STATUS_SCRIPT_MISMATCH  /* mock only: operation not in the script */
+    I2C_STATUS_INVALID_ARGUMENT = 1,
+    I2C_STATUS_OS_ERROR = 2,        /* a system call failed; see os_errno */
+    I2C_STATUS_SHORT_TRANSFER = 3,  /* bytes moved differ from bytes
+                                       requested, fewer or (backend bug)
+                                       more */
+    I2C_STATUS_SCRIPT_MISMATCH = 4  /* mock only: operation not in the
+                                       script */
 } i2c_status;
 
 typedef struct {

@@ -398,6 +398,22 @@ static void test_stage_names(void)
 }
 
 /* main: run every SIMULATED driver test; abort on the first failure. */
+/*
+ * test_stored_stage_codes: these numbers are stored on disk (storage
+ * record byte 37, docs/design.md), so they must never change.
+ */
+static void test_stored_stage_codes(void)
+{
+    assert(BH1750_STAGE_NONE == 0);
+    assert(BH1750_STAGE_ARGUMENT == 1);
+    assert(BH1750_STAGE_POWER_ON == 2);
+    assert(BH1750_STAGE_MTREG_HIGH == 3);
+    assert(BH1750_STAGE_MTREG_LOW == 4);
+    assert(BH1750_STAGE_MEASURE_COMMAND == 5);
+    assert(BH1750_STAGE_WAIT == 6);
+    assert(BH1750_STAGE_READ == 7);
+}
+
 int main(void)
 {
     test_raw_to_mlx_vectors();
@@ -410,6 +426,7 @@ int main(void)
     test_arguments_rejected();
     test_simulation_label_copied();
     test_stage_names();
+    test_stored_stage_codes();
 
     puts("SIMULATED bh1750 driver tests passed (scripted mock; "
          "no sensor hardware used)");

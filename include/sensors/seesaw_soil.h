@@ -97,19 +97,24 @@
  */
 #define SOIL_CAPACITANCE_MAX_VALID_COUNTS 4095u
 
+/*
+ * Stored codes: these values are written to disk (storage record byte 37,
+ * docs/design.md), so existing values never change. Add new stages only at
+ * the end, with the next unused number.
+ */
 typedef enum {
-    SOIL_STAGE_NONE = 0,        /* success */
-    SOIL_STAGE_ARGUMENT,        /* rejected before any I/O */
-    SOIL_STAGE_RESET,
-    SOIL_STAGE_RESET_WAIT,
-    SOIL_STAGE_HW_ID_SELECT,
-    SOIL_STAGE_HW_ID_WAIT,
-    SOIL_STAGE_HW_ID_READ,
-    SOIL_STAGE_HW_ID,           /* read succeeded, ID is not 0x55 */
-    SOIL_STAGE_MEASURE_SELECT,
-    SOIL_STAGE_MEASURE_WAIT,
-    SOIL_STAGE_MEASURE_READ,
-    SOIL_STAGE_RANGE            /* read succeeded, value above 4095 */
+    SOIL_STAGE_NONE = 0,             /* success */
+    SOIL_STAGE_ARGUMENT = 1,         /* rejected before any I/O */
+    SOIL_STAGE_RESET = 2,
+    SOIL_STAGE_RESET_WAIT = 3,
+    SOIL_STAGE_HW_ID_SELECT = 4,
+    SOIL_STAGE_HW_ID_WAIT = 5,
+    SOIL_STAGE_HW_ID_READ = 6,
+    SOIL_STAGE_HW_ID = 7,            /* read succeeded, ID is not 0x55 */
+    SOIL_STAGE_MEASURE_SELECT = 8,
+    SOIL_STAGE_MEASURE_WAIT = 9,
+    SOIL_STAGE_MEASURE_READ = 10,
+    SOIL_STAGE_RANGE = 11            /* read succeeded, value above 4095 */
 } soil_stage;
 
 typedef struct {
