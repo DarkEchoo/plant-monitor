@@ -721,6 +721,20 @@ static void test_status_names(void)
                   "SCRIPT_MISMATCH") == 0);
 }
 
+/*
+ * test_stored_status_codes: these numbers are stored on disk (byte 36 of
+ * the storage record proposed in PR #5), so they must never change. A
+ * renumbered or reordered enum fails here.
+ */
+static void test_stored_status_codes(void)
+{
+    assert(I2C_STATUS_OK == 0);
+    assert(I2C_STATUS_INVALID_ARGUMENT == 1);
+    assert(I2C_STATUS_OS_ERROR == 2);
+    assert(I2C_STATUS_SHORT_TRANSFER == 3);
+    assert(I2C_STATUS_SCRIPT_MISMATCH == 4);
+}
+
 int main(void)
 {
     test_full_script_succeeds();
@@ -748,6 +762,7 @@ int main(void)
     test_closed_device_skips_backend();
     test_missing_callbacks_rejected();
     test_status_names();
+    test_stored_status_codes();
 
     puts("SIMULATED i2c transport tests passed");
     return 0;
