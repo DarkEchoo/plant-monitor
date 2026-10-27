@@ -443,6 +443,26 @@ static void test_stage_names(void)
     }
 }
 
+/*
+ * test_stored_stage_codes: these numbers are stored on disk (byte 37 of
+ * the storage record proposed in PR #5), so they must never change.
+ */
+static void test_stored_stage_codes(void)
+{
+    assert(SOIL_STAGE_NONE == 0);
+    assert(SOIL_STAGE_ARGUMENT == 1);
+    assert(SOIL_STAGE_RESET == 2);
+    assert(SOIL_STAGE_RESET_WAIT == 3);
+    assert(SOIL_STAGE_HW_ID_SELECT == 4);
+    assert(SOIL_STAGE_HW_ID_WAIT == 5);
+    assert(SOIL_STAGE_HW_ID_READ == 6);
+    assert(SOIL_STAGE_HW_ID == 7);
+    assert(SOIL_STAGE_MEASURE_SELECT == 8);
+    assert(SOIL_STAGE_MEASURE_WAIT == 9);
+    assert(SOIL_STAGE_MEASURE_READ == 10);
+    assert(SOIL_STAGE_RANGE == 11);
+}
+
 /* main: run every SIMULATED driver test; abort on the first failure. */
 int main(void)
 {
@@ -456,6 +476,7 @@ int main(void)
     test_arguments_rejected();
     test_simulation_label_copied();
     test_stage_names();
+    test_stored_stage_codes();
 
     puts("SIMULATED seesaw soil driver tests passed (scripted mock; "
          "no sensor hardware used)");
