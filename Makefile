@@ -27,6 +27,13 @@ CAPTURE_SRCS := src/sensors/capture.c src/sensors/bh1750.c \
 	src/sensors/seesaw_soil.c $(TRANSPORT_SRCS)
 CAPTURE_HDRS := include/sensors/capture.h include/sensors/bh1750.h \
 	include/sensors/seesaw_soil.h $(TRANSPORT_HDRS)
+RECORD_TEST_TARGET := $(BUILD_DIR)/test_storage_record
+RECORD_SRCS := src/storage/record.c src/storage/crc32.c
+RECORD_HDRS := include/storage/record.h include/storage/crc32.h
+LOG_TEST_TARGET := $(BUILD_DIR)/test_storage_log
+LOG_SRCS := src/storage/log_writer.c $(RECORD_SRCS)
+LOG_HDRS := include/storage/log_writer.h src/storage/log_writer_sys.h \
+	$(RECORD_HDRS)
 
 .PHONY: all test asan memcheck clean
 
@@ -68,9 +75,15 @@ $(DIAG_TEST_TARGET): tests/test_sensor_diag.c $(DIAG_SRCS) $(DIAG_HDRS) \
 $(CAPTURE_TEST_TARGET): tests/test_capture.c $(CAPTURE_SRCS) $(CAPTURE_HDRS) | $(BUILD_DIR)
 	$(CC) $(CFLAGS) tests/test_capture.c $(CAPTURE_SRCS) -o $(CAPTURE_TEST_TARGET)
 
+$(RECORD_TEST_TARGET): tests/test_storage_record.c $(RECORD_SRCS) $(RECORD_HDRS) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) tests/test_storage_record.c $(RECORD_SRCS) -o $(RECORD_TEST_TARGET)
+
+$(LOG_TEST_TARGET): tests/test_storage_log.c $(LOG_SRCS) $(LOG_HDRS) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) tests/test_storage_log.c $(LOG_SRCS) -o $(LOG_TEST_TARGET)
+
 test: $(TEST_TARGET) $(TRANSPORT_TEST_TARGET) $(LINUX_TEST_TARGET) \
 	$(BH1750_TEST_TARGET) $(SOIL_TEST_TARGET) $(DIAG_TEST_TARGET) \
-	$(CAPTURE_TEST_TARGET)
+	$(CAPTURE_TEST_TARGET) $(RECORD_TEST_TARGET) $(LOG_TEST_TARGET)
 	./$(TEST_TARGET)
 	./$(TRANSPORT_TEST_TARGET)
 	./$(LINUX_TEST_TARGET)
@@ -78,6 +91,8 @@ test: $(TEST_TARGET) $(TRANSPORT_TEST_TARGET) $(LINUX_TEST_TARGET) \
 	./$(SOIL_TEST_TARGET)
 	./$(DIAG_TEST_TARGET)
 	./$(CAPTURE_TEST_TARGET)
+	./$(RECORD_TEST_TARGET)
+	./$(LOG_TEST_TARGET)
 
 ASAN_FLAGS := -fsanitize=address,undefined -fno-sanitize-recover=all \
 	-fno-omit-frame-pointer -g
@@ -88,7 +103,7 @@ asan:
 
 memcheck: $(TEST_TARGET) $(TRANSPORT_TEST_TARGET) $(LINUX_TEST_TARGET) \
 	$(BH1750_TEST_TARGET) $(SOIL_TEST_TARGET) $(DIAG_TEST_TARGET) \
-	$(CAPTURE_TEST_TARGET)
+	$(CAPTURE_TEST_TARGET) $(RECORD_TEST_TARGET) $(LOG_TEST_TARGET)
 	@if command -v valgrind >/dev/null 2>&1; then \
 		valgrind --leak-check=full --error-exitcode=1 ./$(TEST_TARGET) && \
 		valgrind --leak-check=full --error-exitcode=1 ./$(TRANSPORT_TEST_TARGET) && \
@@ -96,7 +111,9 @@ memcheck: $(TEST_TARGET) $(TRANSPORT_TEST_TARGET) $(LINUX_TEST_TARGET) \
 		valgrind --leak-check=full --error-exitcode=1 ./$(BH1750_TEST_TARGET) && \
 		valgrind --leak-check=full --error-exitcode=1 ./$(SOIL_TEST_TARGET) && \
 		valgrind --leak-check=full --error-exitcode=1 ./$(DIAG_TEST_TARGET) && \
-		valgrind --leak-check=full --error-exitcode=1 ./$(CAPTURE_TEST_TARGET); \
+		valgrind --leak-check=full --error-exitcode=1 ./$(CAPTURE_TEST_TARGET) && \
+		valgrind --leak-check=full --error-exitcode=1 ./$(RECORD_TEST_TARGET) && \
+		valgrind --leak-check=full --error-exitcode=1 ./$(LOG_TEST_TARGET); \
 	else \
 		echo "valgrind is not installed"; exit 1; \
 	fi

@@ -2,7 +2,7 @@
 
 | Item | Status |
 |---|---|
-| Tool | `build/sensor-diag` from PR #8 (`jesse/sensor-diag`, commit `201064f` or later) |
+| Tool | `build/sensor-diag` on `main` (merged through PR #8; run from `origin/main`) |
 | Who runs it | Michael, on the project Raspberry Pi 3 Model B+ |
 | Status | **Procedure only. Not run yet; there are no results.** |
 | Assembly reference | `docs/hardware-plan.md` (wiring path, header pins, calibration plan) |
@@ -94,7 +94,7 @@ step clock    sh -c 'date -u; uptime'
 step tools    sh -c 'cc --version | head -1; make --version | head -1'
 
 git fetch origin
-git checkout --detach origin/jesse/sensor-diag
+git checkout --detach origin/main
 step commit   git rev-parse HEAD
 step status   git status --porcelain --untracked-files=no
 
@@ -103,7 +103,7 @@ step build    make
 step test     make test
 ```
 
-- **Commit:** `commit` should be `201064f…` or a later PR #8 head. Whatever it is, the recorded hash identifies what was tested.
+- **Commit:** `commit` is the `main` commit you tested. Whatever it is, the recorded hash identifies what was tested.
 - **Tracked files:** `status` should print nothing.
 - **Kernel:** `uname -srvm` deliberately leaves out the hostname.
 - **Tests:** `make test` is hardware-free, using mocks only. On the Pi it is also the first build and test on the target architecture; `arch` shows whether it is 32- or 64-bit.
