@@ -35,3 +35,7 @@ With clang the message is the same, except it reports line 133.
 - The Pi kernel is configured with `CONFIG_ARM64_VA_BITS=39` (`CONFIG_PGTABLE_LEVELS=3`, 4 KiB pages). The failing address, `0x500000000000`, is beyond what a 39-bit address space can reach. We think this is the cause, but we have not confirmed it.
 
 This is a limitation of the platform or the sanitizer runtime, not a failure in the storage record code. As extra evidence, a one-off build of `test_storage_record` with `-fsanitize=undefined` alone passes on the Pi (exit 0). That build is not the `make asan` target.
+
+## Update 2026-10-27: fixed with a 48-bit VA kernel
+
+On a custom kernel with `CONFIG_ARM64_VA_BITS=48` (`6.18.50-plantmonitor-va48`), `make asan` passes on the Pi with both GCC 14.2.0 and Clang 19.1.7, and deliberate heap and signed-overflow probes are caught. The same compiler versions failed on the 39-bit kernel, which strongly supports the 39-bit address space as the cause. Details and exact results: [M3-pi-asan-va48.md](M3-pi-asan-va48.md).
