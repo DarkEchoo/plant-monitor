@@ -708,6 +708,52 @@ static void test_shared_dir_separate_files(void)
     remove_temp();
 }
 
+/*
+ * test_close_with_broken_log: when the text log can no longer be written
+ * (as with a closed stdout pipe), close still flushes the buffered record
+ * to storage, reports the log failure, and sets closed_ok.
+ */
+static void test_close_with_broken_log(void)
+{
+    static fake f;
+    static capture_store st;
+    capture_env env = {fake_open, fake_read_clock, fake_sleep_until,
+                       fake_trust, fake_stop, NULL, 1};
+    storage_record recs[MAX_FILE_RECORDS];
+    capture_sample s = base_sample();
+    capture_config cfg;
+    FILE *log = tmpfile();
+    FILE *broken;
+    char path[PATH_CAP];
+
+    assert(log != NULL);
+    make_temp_dir();
+    memset(&f, 0, sizeof f);
+    f.now_ns = ANCHOR_NS;
+    env.ctx = &f;
+    capture_config_proposed(&cfg, CAPTURE_SENSOR_LIGHT, 1, 0x23);
+    assert(capture_store_open(&st, log, temp_dir, &cfg, &env) == 0);
+    s.mono_ns = f.now_ns;
+    assert(capture_store_emit_sample(&st, &s) == 0);
+    assert(st.writer.buffered_records == 1);
+
+    /* A read-only stream: every write to it fails. */
+    assert(snprintf(path, sizeof path, "%s/%s", temp_dir,
+                    log_name(CAPTURE_SENSOR_LIGHT)) > 0);
+    broken = fopen(path, "r");
+    assert(broken != NULL);
+    st.log = broken;
+    assert(capture_store_close(&st) == EIO);
+    assert(st.closed_ok && !st.writer.is_open);
+    assert(fclose(broken) == 0);
+
+    assert(read_records(CAPTURE_SENSOR_LIGHT, recs, COUNT_OF(recs)) == 2);
+    assert(recs[1].record_type == STORAGE_RECORD_TYPE_LIGHT &&
+           recs[1].source_sequence == 7);
+    assert(fclose(log) == 0);
+    remove_temp();
+}
+
 /* test_missing_dir: a directory that does not exist is a logged error. */
 static void test_missing_dir(void)
 {
@@ -750,6 +796,7 @@ int main(void)
     test_previous_log_refused();
     test_long_tick_flushes_each_record();
     test_shared_dir_separate_files();
+    test_close_with_broken_log();
     test_missing_dir();
 
     puts("SIMULATED capture store tests passed (scripted mock, fake clock; "

@@ -54,6 +54,7 @@ typedef struct {
     int64_t tick_period_ns;
     storage_log_writer writer;
     uint64_t records_appended;  /* including START */
+    int closed_ok;              /* storage flushed and closed cleanly */
 } capture_store;
 
 /*
@@ -69,7 +70,12 @@ int capture_store_emit_sample(void *ctx, const capture_sample *sample);
 int capture_store_emit_heartbeat(void *ctx,
                                  const capture_heartbeat *heartbeat);
 
-/* Flush and close the writer, logging the result. Returns 0 or an errno. */
+/*
+ * Flush and close the writer, logging the result. Returns 0 or an errno.
+ * closed_ok is set when the storage itself flushed and closed cleanly, so a
+ * nonzero return with closed_ok set means only the text log line failed
+ * (for example stdout is a closed pipe).
+ */
 int capture_store_close(capture_store *st);
 
 #endif

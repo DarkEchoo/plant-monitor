@@ -108,7 +108,12 @@ int main(int argc, char **argv)
         rc = 1;
     }
     err = capture_store_close(&store);
-    if (err != 0) {
+    if (err != 0 && store.closed_ok) {
+        fprintf(stderr, "%s: storage was flushed and closed, but writing "
+                        "its store_close line failed: %s\n", program,
+                strerror(err));
+        rc = 1;
+    } else if (err != 0) {
         fprintf(stderr, "%s: closing storage failed: %s\n", program,
                 strerror(err));
         rc = 1;

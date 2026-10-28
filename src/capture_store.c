@@ -340,6 +340,7 @@ int capture_store_close(capture_store *st)
     if (r.status != STORAGE_LOG_OK) {
         return log_store_error(st, "close", r);
     }
+    st->closed_ok = 1;
     line_start(st, "store_close");
     fprintf(st->log, " flushed_records=%zu records_appended=%" PRIu64
             " file_bytes=%" PRIu64 " result=OK\n", before,
