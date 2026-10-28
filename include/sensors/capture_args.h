@@ -42,6 +42,18 @@ typedef enum {
 capture_args_result capture_parse_args(int argc, char *const argv[],
                                        capture_config *cfg, FILE *err);
 
+/*
+ * capture_parse_args_store: capture_parse_args plus a required
+ * --store-dir DIR, for plant-capture's TEMPORARY per-sensor storage (see
+ * capture_store.h). On RUN *store_dir points into argv; otherwise *cfg and
+ * *store_dir are untouched. capture_parse_args itself still rejects
+ * --store-dir as an unknown argument.
+ */
+capture_args_result capture_parse_args_store(int argc, char *const argv[],
+                                             capture_config *cfg,
+                                             const char **store_dir,
+                                             FILE *err);
+
 /* Usage text, marking the rates as proposals. */
 void capture_usage(FILE *out, const char *program);
 

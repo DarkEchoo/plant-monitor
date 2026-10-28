@@ -18,11 +18,12 @@ typedef enum {
     OPT_ADDR,
     OPT_TICK_MS,
     OPT_EVERY,
+    OPT_STORE_DIR,      /* only for capture_parse_args_store */
     OPT_COUNT
 } option_id;
 
 static const char *const option_names[OPT_COUNT] = {
-    "--sensor", "--bus", "--addr", "--tick-ms", "--every"
+    "--sensor", "--bus", "--addr", "--tick-ms", "--every", "--store-dir"
 };
 
 /*
@@ -94,11 +95,16 @@ static option_id find_option(const char *arg)
     return OPT_COUNT;
 }
 
-/* capture_parse_args: see capture_args.h. */
-capture_args_result capture_parse_args(int argc, char *const argv[],
-                                       capture_config *cfg, FILE *err)
+/*
+ * parse_args: both public parsers. A NULL store_dir makes --store-dir an
+ * unknown argument, exactly as before it existed; otherwise it is
+ * required.
+ */
+static capture_args_result parse_args(int argc, char *const argv[],
+                                      capture_config *cfg,
+                                      const char **store_dir, FILE *err)
 {
-    const char *value[OPT_COUNT] = {NULL, NULL, NULL, NULL, NULL};
+    const char *value[OPT_COUNT] = {NULL};
     const char *program;
     capture_config parsed;
     capture_sensor sensor;
@@ -123,7 +129,7 @@ capture_args_result capture_parse_args(int argc, char *const argv[],
             return CAPTURE_ARGS_HELP;
         }
         id = find_option(opt);
-        if (id == OPT_COUNT) {
+        if (id == OPT_COUNT || (id == OPT_STORE_DIR && store_dir == NULL)) {
             fprintf(err, "%s: unknown argument '%s'\n", program, opt);
             return CAPTURE_ARGS_ERROR;
         }
@@ -200,17 +206,45 @@ capture_args_result capture_parse_args(int argc, char *const argv[],
         }
         parsed.sample_every_ticks = (uint32_t)v;
     }
+    if (store_dir != NULL &&
+        (value[OPT_STORE_DIR] == NULL || value[OPT_STORE_DIR][0] == '\0')) {
+        fprintf(err, "%s: --store-dir is required (an existing "
+                     "directory)\n", program);
+        return CAPTURE_ARGS_ERROR;
+    }
 
     *cfg = parsed;
+    if (store_dir != NULL) {
+        *store_dir = value[OPT_STORE_DIR];
+    }
     return CAPTURE_ARGS_RUN;
+}
+
+/* capture_parse_args: see capture_args.h. */
+capture_args_result capture_parse_args(int argc, char *const argv[],
+                                       capture_config *cfg, FILE *err)
+{
+    return parse_args(argc, argv, cfg, NULL, err);
+}
+
+/* capture_parse_args_store: see capture_args.h. */
+capture_args_result capture_parse_args_store(int argc, char *const argv[],
+                                             capture_config *cfg,
+                                             const char **store_dir,
+                                             FILE *err)
+{
+    if (store_dir == NULL) {
+        return CAPTURE_ARGS_ERROR;
+    }
+    return parse_args(argc, argv, cfg, store_dir, err);
 }
 
 /* capture_usage: the --help text. */
 void capture_usage(FILE *out, const char *program)
 {
     fprintf(out,
-        "usage: %s --sensor light|soil --bus N [--addr ADDR]\n"
-        "       [--tick-ms N] [--every N]\n"
+        "usage: %s --sensor light|soil --bus N --store-dir DIR\n"
+        "       [--addr ADDR] [--tick-ms N] [--every N]\n"
         "\n"
         "Capture one sensor on /dev/i2c-N. Run one process per sensor.\n"
         "\n"
@@ -224,6 +258,12 @@ void capture_usage(FILE *out, const char *program)
         "                       (PROPOSED default 10000)\n"
         "  --every N            ticks between attempts, 1 to %u\n"
         "                       (PROPOSED default: light 1, soil 6)\n"
+        "  --store-dir DIR      existing directory for this sensor's storage\n"
+        "                       log. TEMPORARY per-sensor integration until\n"
+        "                       the hub exists: use one directory per sensor;\n"
+        "                       sequence numbers are per process, not\n"
+        "                       hub-wide. A previous run's log in DIR is\n"
+        "                       refused (no recovery yet).\n"
         "  --help               show this text\n"
         "\n"
         "Numbers are decimal; hex only for --addr (0x23). A leading 0 is\n"

@@ -45,10 +45,25 @@ LOG_TEST_TARGET := $(BUILD_DIR)/test_storage_log
 LOG_SRCS := src/storage/log_writer.c $(RECORD_SRCS)
 LOG_HDRS := include/storage/log_writer.h src/storage/log_writer_sys.h \
 	$(RECORD_HDRS)
+# capture -> storage: TEMPORARY per-sensor integration until the hub exists.
+CAPTURE_STORE_TEST_TARGET := $(BUILD_DIR)/test_capture_store
+CAPTURE_STORE_SRCS := src/capture_store.c src/storage/capture_record.c \
+	src/sensors/capture_log.c $(LOG_SRCS) $(CAPTURE_SRCS)
+CAPTURE_STORE_HDRS := include/capture_store.h include/storage/capture_record.h \
+	include/sensors/capture_log.h $(LOG_HDRS) $(CAPTURE_HDRS)
+CAPTURE_PROG_TARGET := $(BUILD_DIR)/plant-capture
+CAPTURE_PROG_SRCS := src/capture_main.c src/capture_store.c \
+	src/storage/capture_record.c src/sensors/capture_log.c \
+	src/sensors/capture_args.c src/sensors/capture_linux.c \
+	src/sensors/capture.c src/sensors/bh1750.c src/sensors/seesaw_soil.c \
+	src/sensors/i2c_transport.c src/sensors/i2c_linux.c $(LOG_SRCS)
+CAPTURE_PROG_HDRS := $(CAPTURE_STORE_HDRS) $(CAPTURE_LINUX_HDRS) \
+	$(CAPTURE_ARGS_HDRS)
+DUMP_TARGET := $(BUILD_DIR)/storage-dump
 
 .PHONY: all test asan memcheck clean
 
-all: $(TARGET) $(DIAG_TARGET)
+all: $(TARGET) $(DIAG_TARGET) $(CAPTURE_PROG_TARGET) $(DUMP_TARGET)
 
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
@@ -82,7 +97,18 @@ $(DIAG_TEST_TARGET): tests/test_sensor_diag.c $(DIAG_SRCS) $(DIAG_HDRS) \
 	$(CC) $(CFLAGS) tests/test_sensor_diag.c $(DIAG_SRCS) \
 		src/sensors/i2c_mock.c -o $(DIAG_TEST_TARGET)
 
-# The capture core has no program yet; only its SIMULATED test is built.
+# plant-capture is built but never run by the tests: it opens /dev/i2c-N.
+$(CAPTURE_PROG_TARGET): $(CAPTURE_PROG_SRCS) $(CAPTURE_PROG_HDRS) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) $(CAPTURE_PROG_SRCS) -o $(CAPTURE_PROG_TARGET)
+
+$(DUMP_TARGET): src/storage/storage_dump_main.c $(RECORD_SRCS) $(RECORD_HDRS) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) src/storage/storage_dump_main.c $(RECORD_SRCS) -o $(DUMP_TARGET)
+
+$(CAPTURE_STORE_TEST_TARGET): tests/test_capture_store.c $(CAPTURE_STORE_SRCS) \
+	$(CAPTURE_STORE_HDRS) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) tests/test_capture_store.c $(CAPTURE_STORE_SRCS) \
+		-o $(CAPTURE_STORE_TEST_TARGET)
+
 $(CAPTURE_TEST_TARGET): tests/test_capture.c $(CAPTURE_SRCS) $(CAPTURE_HDRS) | $(BUILD_DIR)
 	$(CC) $(CFLAGS) tests/test_capture.c $(CAPTURE_SRCS) -o $(CAPTURE_TEST_TARGET)
 
@@ -111,7 +137,7 @@ test: $(TEST_TARGET) $(TRANSPORT_TEST_TARGET) $(LINUX_TEST_TARGET) \
 	$(BH1750_TEST_TARGET) $(SOIL_TEST_TARGET) $(DIAG_TEST_TARGET) \
 	$(CAPTURE_TEST_TARGET) $(CAPTURE_LINUX_TEST_TARGET) \
 	$(CAPTURE_ARGS_TEST_TARGET) $(CAPTURE_LOG_TEST_TARGET) \
-	$(RECORD_TEST_TARGET) $(LOG_TEST_TARGET)
+	$(RECORD_TEST_TARGET) $(LOG_TEST_TARGET) $(CAPTURE_STORE_TEST_TARGET)
 	./$(TEST_TARGET)
 	./$(TRANSPORT_TEST_TARGET)
 	./$(LINUX_TEST_TARGET)
@@ -124,6 +150,7 @@ test: $(TEST_TARGET) $(TRANSPORT_TEST_TARGET) $(LINUX_TEST_TARGET) \
 	./$(CAPTURE_LOG_TEST_TARGET)
 	./$(RECORD_TEST_TARGET)
 	./$(LOG_TEST_TARGET)
+	./$(CAPTURE_STORE_TEST_TARGET)
 
 ASAN_FLAGS := -fsanitize=address,undefined -fno-sanitize-recover=all \
 	-fno-omit-frame-pointer -g
@@ -136,7 +163,7 @@ memcheck: $(TEST_TARGET) $(TRANSPORT_TEST_TARGET) $(LINUX_TEST_TARGET) \
 	$(BH1750_TEST_TARGET) $(SOIL_TEST_TARGET) $(DIAG_TEST_TARGET) \
 	$(CAPTURE_TEST_TARGET) $(CAPTURE_LINUX_TEST_TARGET) \
 	$(CAPTURE_ARGS_TEST_TARGET) $(CAPTURE_LOG_TEST_TARGET) \
-	$(RECORD_TEST_TARGET) $(LOG_TEST_TARGET)
+	$(RECORD_TEST_TARGET) $(LOG_TEST_TARGET) $(CAPTURE_STORE_TEST_TARGET)
 	@if command -v valgrind >/dev/null 2>&1; then \
 		valgrind --leak-check=full --error-exitcode=1 ./$(TEST_TARGET) && \
 		valgrind --leak-check=full --error-exitcode=1 ./$(TRANSPORT_TEST_TARGET) && \
@@ -149,7 +176,8 @@ memcheck: $(TEST_TARGET) $(TRANSPORT_TEST_TARGET) $(LINUX_TEST_TARGET) \
 		valgrind --leak-check=full --error-exitcode=1 ./$(CAPTURE_ARGS_TEST_TARGET) && \
 		valgrind --leak-check=full --error-exitcode=1 ./$(CAPTURE_LOG_TEST_TARGET) && \
 		valgrind --leak-check=full --error-exitcode=1 ./$(RECORD_TEST_TARGET) && \
-		valgrind --leak-check=full --error-exitcode=1 ./$(LOG_TEST_TARGET); \
+		valgrind --leak-check=full --error-exitcode=1 ./$(LOG_TEST_TARGET) && \
+		valgrind --leak-check=full --error-exitcode=1 ./$(CAPTURE_STORE_TEST_TARGET); \
 	else \
 		echo "valgrind is not installed"; exit 1; \
 	fi

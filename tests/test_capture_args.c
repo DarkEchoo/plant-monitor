@@ -265,6 +265,83 @@ static void test_usage_text(void)
     assert(strstr(out, "PROPOSED") != NULL);
     assert(strstr(out, "Exit status: 0") != NULL);
     assert(strstr(out, "hex only for --addr") != NULL);
+    assert(strstr(out, "--store-dir DIR") != NULL);
+    assert(strstr(out, "TEMPORARY per-sensor") != NULL);
+}
+
+/* parse_store: capture_parse_args_store on a NULL-terminated list. */
+static capture_args_result parse_store(char *const *args, capture_config *cfg,
+                                       const char **store_dir,
+                                       long *err_bytes)
+{
+    char *argv[20];
+    int argc = 0;
+    FILE *err = tmpfile();
+    capture_args_result r;
+
+    assert(err != NULL);
+    argv[argc++] = "plant-capture";
+    while (*args != NULL) {
+        assert(argc < (int)COUNT_OF(argv) - 1);
+        argv[argc++] = *args++;
+    }
+    argv[argc] = NULL;
+    r = capture_parse_args_store(argc, argv, cfg, store_dir, err);
+    assert(fflush(err) == 0);
+    *err_bytes = ftell(err);
+    assert(fclose(err) == 0);
+    return r;
+}
+
+/*
+ * test_store_dir: the store parser requires a non-empty --store-dir and
+ * otherwise parses exactly as capture_parse_args; the plain parser still
+ * rejects --store-dir as unknown.
+ */
+static void test_store_dir(void)
+{
+    static char *const ok[] = {"--sensor", "soil", "--bus", "1",
+                               "--store-dir", "store/soil", NULL};
+    static char *const missing[] = {"--sensor", "soil", "--bus", "1", NULL};
+    static char *const empty[] = {"--sensor", "soil", "--bus", "1",
+                                  "--store-dir", "", NULL};
+    static char *const twice[] = {"--store-dir", "a", "--sensor", "soil",
+                                  "--bus", "1", "--store-dir", "b", NULL};
+    static char *const no_value[] = {"--sensor", "soil", "--bus", "1",
+                                     "--store-dir", NULL};
+    static char *const bad_bus[] = {"--sensor", "soil", "--bus", "x",
+                                    "--store-dir", "a", NULL};
+    static char *const *const bad[] = {missing, empty, twice, no_value,
+                                       bad_bus};
+    static char *const help[] = {"--help", NULL};
+    capture_config cfg;
+    capture_config want;
+    const char *dir = NULL;
+    long err_bytes;
+    size_t i;
+
+    assert(parse_store(ok, &cfg, &dir, &err_bytes) == CAPTURE_ARGS_RUN);
+    capture_config_proposed(&want, CAPTURE_SENSOR_SOIL, 1, 0x36);
+    assert(same_config(&cfg, &want) && err_bytes == 0);
+    assert(dir != NULL && strcmp(dir, "store/soil") == 0);
+
+    for (i = 0; i < COUNT_OF(bad); i++) {
+        capture_config before;
+        const char *sentinel = "untouched";
+
+        memset(&cfg, 0x5a, sizeof cfg);
+        before = cfg;
+        dir = sentinel;
+        assert(parse_store(bad[i], &cfg, &dir, &err_bytes) ==
+               CAPTURE_ARGS_ERROR);
+        assert(err_bytes > 0);
+        assert(memcmp(&cfg, &before, sizeof cfg) == 0 && dir == sentinel);
+    }
+    assert(parse_store(help, &cfg, &dir, &err_bytes) == CAPTURE_ARGS_HELP);
+
+    /* The plain parser is unchanged: --store-dir is unknown there. */
+    assert(parse(ok, &cfg, &err_bytes) == CAPTURE_ARGS_ERROR);
+    assert(strstr(last_err, "unknown argument '--store-dir'") != NULL);
 }
 
 /* test_exit_status: 0 only for a clean stop, 2 for usage, 1 otherwise. */
@@ -295,6 +372,7 @@ int main(void)
     test_rejects();
     test_option_as_value();
     test_usage_text();
+    test_store_dir();
     test_exit_status();
 
     puts("capture argument tests passed (parsing only; no device, clock "
