@@ -16,26 +16,35 @@
  * that numbers every record and writes one log. Here each capture process
  * owns its own writer instead:
  * - one storage directory per sensor; the light and soil logs are
- *   separate files;
+ *   separate files, and the file name includes the sensor, so two
+ *   processes given the same directory by mistake never share a file;
  * - sequence numbers are per process (1, 2, 3 ... in that file), NOT
  *   hub-wide, and say nothing about ordering between the two sensors;
  * - every run starts a fresh file at sequence 1 with a START record. A
  *   previous run's log in the same directory is refused by the writer
  *   (STORAGE_LOG_SEQUENCE), because recovery, rotation and retention are
- *   not implemented.
+ *   not implemented. That includes a START-only log left by a run whose
+ *   device open failed, so use a fresh directory for every run.
  * Every storage line in the text log says storage=temporary-per-sensor.
  *
- * Flushing follows the writer's batch rule. On each heartbeat the batch is
- * also flushed if it would be overdue by the next tick, so no record waits
- * longer than STORAGE_LOG_FLUSH_INTERVAL_NS even though the writer has no
- * timer. Every storage failure is logged with its operation, status,
- * stage and errno, and returned as an errno, which makes capture_run stop
- * with CAPTURE_EXIT_SINK_FAILED (a writer failure is sticky by design).
+ * Flushing follows the writer's batch rule. The writer has no timer, so
+ * after each append and on each heartbeat the batch is also flushed if its
+ * oldest record would be within CAPTURE_STORE_FLUSH_MARGIN_NS of
+ * STORAGE_LOG_FLUSH_INTERVAL_NS by the next heartbeat. The margin absorbs
+ * attempt time and late wake-ups; checking after each append covers ticks
+ * of 60 s or longer, where a record is flushed at once. Every storage
+ * failure is logged with its operation, status, stage and errno, and
+ * returned as an errno, which makes capture_run stop with
+ * CAPTURE_EXIT_SINK_FAILED (a writer failure is sticky by design).
  */
 
-#define CAPTURE_STORE_FILE_NAME "plant-0000000000000001.log"
-#define CAPTURE_STORE_SIMULATED_FILE_NAME \
-    STORAGE_LOG_SIMULATED_PREFIX CAPTURE_STORE_FILE_NAME
+#define CAPTURE_STORE_FLUSH_MARGIN_NS INT64_C(1000000000)   /* 1 s */
+
+#define CAPTURE_STORE_LIGHT_FILE_NAME "plant-light-0000000000000001.log"
+#define CAPTURE_STORE_SOIL_FILE_NAME "plant-soil-0000000000000001.log"
+
+/* capture_store_file_name: this run's log file name for sensor. */
+const char *capture_store_file_name(capture_sensor sensor, int simulated);
 
 typedef struct {
     FILE *log;                  /* the text log */

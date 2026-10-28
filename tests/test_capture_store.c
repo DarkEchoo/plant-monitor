@@ -35,6 +35,7 @@
 #define ANCHOR_NS (5 * SEC)
 #define WALL_OFFSET_NS (INT64_C(1700000000) * SEC)
 #define MAX_FILE_RECORDS 16
+#define CLOCK_STEP_NS INT64_C(1000000)   /* 1 ms per clock read */
 #define LOG_CAP 16384
 
 static const uint8_t cmd_power_on[] = {0x01};
@@ -224,6 +225,9 @@ typedef struct {
     unsigned stop_after_heartbeats;
     capture_store *store;
     long file_bytes_at_heartbeat[32];  /* file size seen at each one */
+    int64_t now_at_heartbeat[32];      /* fake time after each one */
+    long file_bytes_after_sample[32];  /* file size after each sample */
+    unsigned samples;
 } fake;
 
 static char temp_dir[PATH_CAP];
@@ -280,13 +284,18 @@ static i2c_result fake_open(void *ctx, i2c_device *dev, unsigned bus_number,
     return r;
 }
 
-/* fake_read_clock: wall = WALL_OFFSET + monotonic. */
+/*
+ * fake_read_clock: wall = WALL_OFFSET + monotonic. Every read advances
+ * the clock by CLOCK_STEP_NS, so work takes time as on real hardware: an
+ * attempt (several reads) ends later than the heartbeat before it.
+ */
 static int fake_read_clock(void *ctx, capture_clock clock,
                            struct timespec *out)
 {
     fake *f = ctx;
     int64_t ns = f->now_ns;
 
+    f->now_ns += CLOCK_STEP_NS;
     if (clock == CAPTURE_CLOCK_WALL) {
         ns += WALL_OFFSET_NS;
     }
@@ -340,6 +349,12 @@ static long file_size(const char *name)
     return n;
 }
 
+/* log_name: the SIMULATED log file name for sensor. */
+static const char *log_name(capture_sensor sensor)
+{
+    return capture_store_file_name(sensor, 1);
+}
+
 /* count_heartbeat: the store's heartbeat sink, plus a count and size. */
 static int count_heartbeat(void *ctx, const capture_heartbeat *h)
 {
@@ -348,17 +363,22 @@ static int count_heartbeat(void *ctx, const capture_heartbeat *h)
 
     assert(f->heartbeats < COUNT_OF(f->file_bytes_at_heartbeat));
     f->file_bytes_at_heartbeat[f->heartbeats] =
-        file_size(CAPTURE_STORE_SIMULATED_FILE_NAME);
+        file_size(log_name(f->store->sensor));
+    f->now_at_heartbeat[f->heartbeats] = f->now_ns;
     f->heartbeats++;
     return err;
 }
 
-/* forward_sample: the store's sample sink. */
+/* forward_sample: the store's sample sink, plus the size after it. */
 static int forward_sample(void *ctx, const capture_sample *s)
 {
     fake *f = ctx;
+    int err = capture_store_emit_sample(f->store, s);
 
-    return capture_store_emit_sample(f->store, s);
+    assert(f->samples < COUNT_OF(f->file_bytes_after_sample));
+    f->file_bytes_after_sample[f->samples++] =
+        file_size(log_name(f->store->sensor));
+    return err;
 }
 
 /* make_temp_dir: a fresh, empty directory for one test. */
@@ -376,19 +396,23 @@ static void make_temp_dir(void)
     assert(mkdtemp(temp_dir) != NULL);
 }
 
-/* remove_temp: delete the log file (if any) and the directory. */
+/* remove_temp: delete the log files (if any) and the directory. */
 static void remove_temp(void)
 {
     char path[PATH_CAP];
 
     assert(snprintf(path, sizeof path, "%s/%s", temp_dir,
-                    CAPTURE_STORE_SIMULATED_FILE_NAME) > 0);
+                    log_name(CAPTURE_SENSOR_LIGHT)) > 0);
+    (void)unlink(path);
+    assert(snprintf(path, sizeof path, "%s/%s", temp_dir,
+                    log_name(CAPTURE_SENSOR_SOIL)) > 0);
     (void)unlink(path);
     assert(rmdir(temp_dir) == 0);
 }
 
 /* read_records: decode every record of the log; return the count. */
-static size_t read_records(storage_record *out, size_t cap)
+static size_t read_records(capture_sensor sensor, storage_record *out,
+                           size_t cap)
 {
     char path[PATH_CAP];
     uint8_t buf[STORAGE_RECORD_SIZE_BYTES];
@@ -397,7 +421,7 @@ static size_t read_records(storage_record *out, size_t cap)
     size_t got;
 
     assert(snprintf(path, sizeof path, "%s/%s", temp_dir,
-                    CAPTURE_STORE_SIMULATED_FILE_NAME) > 0);
+                    log_name(sensor)) > 0);
     fp = fopen(path, "rb");
     assert(fp != NULL);
     while ((got = fread(buf, 1, sizeof buf, fp)) == sizeof buf) {
@@ -481,7 +505,7 @@ static void test_light_end_to_end(void)
     assert(f.mock.next_step == f.step_count && !f.mock.mismatch);
     assert(capture_store_close(&st) == 0);
 
-    n = read_records(recs, COUNT_OF(recs));
+    n = read_records(CAPTURE_SENSOR_LIGHT, recs, COUNT_OF(recs));
     assert(n == 4);
     assert(recs[0].record_type == STORAGE_RECORD_TYPE_START);
     for (i = 0; i < n; i++) {
@@ -494,12 +518,15 @@ static void test_light_end_to_end(void)
         assert(recs[i].flags & STORAGE_FLAG_VALID);
         assert(recs[i].sensor_value == 10000);
         assert(recs[i].source_sequence == i);
-        /* One sample per 10 s tick; START shares tick 0's fake time. */
-        assert(recs[i].monotonic_ns ==
+        /* One sample per 10 s tick, taken within 1 s of its deadline. */
+        assert(recs[i].monotonic_ns > recs[i - 1].monotonic_ns);
+        assert(recs[i].monotonic_ns >=
                (uint64_t)(ANCHOR_NS + (int64_t)(i - 1) *
                                           CAPTURE_PROPOSED_TICK_PERIOD_NS));
+        assert(recs[i].monotonic_ns <
+               (uint64_t)(ANCHOR_NS + SEC + (int64_t)(i - 1) *
+                                          CAPTURE_PROPOSED_TICK_PERIOD_NS));
     }
-    assert(recs[0].monotonic_ns == (uint64_t)ANCHOR_NS);
 
     read_log(log, text, sizeof text);
     assert_every_line_simulated(text);
@@ -516,8 +543,10 @@ static void test_light_end_to_end(void)
 
 /*
  * test_soil_flushed_within_deadline: a soil record (every 6th tick) is on
- * disk by the heartbeat before it would be 60 s old, without waiting for
- * close.
+ * disk before it is 60 s old, without waiting for close, even though the
+ * attempt ends later than its tick's heartbeat (each fake clock read takes
+ * 1 ms). Without the flush margin it would wait for the tick-6 heartbeat
+ * and reach the disk only just under, or over, 60 s.
  */
 static void test_soil_flushed_within_deadline(void)
 {
@@ -541,10 +570,9 @@ static void test_soil_flushed_within_deadline(void)
     assert(f.mock.next_step == f.step_count && !f.mock.mismatch);
 
     /*
-     * START alone until the sample's batch is due. The fake clock does not
-     * advance during mock waits, so sample 1 is appended at tick 0's time;
-     * at the tick-5 heartbeat it would be 60 s old by tick 6, so it is
-     * flushed then, 50 s after it was taken.
+     * START alone until the sample's batch is due: at the tick-5 heartbeat
+     * it would be within the margin of 60 s by tick 6, so it is flushed
+     * then, about 50 s after it was taken.
      */
     for (i = 0; i < 5; i++) {
         assert(f.file_bytes_at_heartbeat[i] == STORAGE_RECORD_SIZE_BYTES);
@@ -553,10 +581,13 @@ static void test_soil_flushed_within_deadline(void)
     assert(f.file_bytes_at_heartbeat[6] == 2 * STORAGE_RECORD_SIZE_BYTES);
 
     assert(capture_store_close(&st) == 0);
-    assert(read_records(recs, COUNT_OF(recs)) == 3);
+    assert(read_records(CAPTURE_SENSOR_SOIL, recs, COUNT_OF(recs)) == 3);
     assert(recs[1].record_type == STORAGE_RECORD_TYPE_SOIL &&
            recs[1].sensor_value == 500 && recs[1].source_sequence == 1);
-    assert(recs[1].monotonic_ns == (uint64_t)ANCHOR_NS);
+    /* Taken after tick 0's heartbeat; on disk well under 60 s later. */
+    assert(recs[1].monotonic_ns > (uint64_t)f.now_at_heartbeat[0]);
+    assert(f.now_at_heartbeat[5] - (int64_t)recs[1].monotonic_ns <
+           60 * SEC - CAPTURE_STORE_FLUSH_MARGIN_NS);
     assert(recs[2].record_type == STORAGE_RECORD_TYPE_SOIL &&
            recs[2].sequence == 3 && recs[2].source_sequence == 2);
 
@@ -592,15 +623,87 @@ static void test_previous_log_refused(void)
 
     assert(capture_store_open(&st, log, temp_dir, &cfg, &env) == 0);
     assert(capture_store_close(&st) == 0);
-    before = file_size(CAPTURE_STORE_SIMULATED_FILE_NAME);
+    before = file_size(log_name(CAPTURE_SENSOR_LIGHT));
     assert(before == STORAGE_RECORD_SIZE_BYTES);
 
     assert(capture_store_open(&st, log, temp_dir, &cfg, &env) != 0);
     assert(!st.writer.is_open);
-    assert(file_size(CAPTURE_STORE_SIMULATED_FILE_NAME) == before);
+    assert(file_size(log_name(CAPTURE_SENSOR_LIGHT)) == before);
     read_log(log, text, sizeof text);
     assert(strstr(text, "event=store_error storage=temporary-per-sensor "
                         "op=open result=SEQUENCE") != NULL);
+    assert(fclose(log) == 0);
+    remove_temp();
+}
+
+/*
+ * test_long_tick_flushes_each_record: with a tick of 60 s or more there is
+ * no heartbeat before the deadline, so each record is flushed right after
+ * it is appended instead of waiting a whole tick.
+ */
+static void test_long_tick_flushes_each_record(void)
+{
+    static fake f;
+    static capture_store st;
+    storage_record recs[MAX_FILE_RECORDS];
+    capture_config cfg;
+    FILE *log = tmpfile();
+
+    assert(log != NULL);
+    make_temp_dir();
+    memset(&f, 0, sizeof f);
+    f.now_ns = ANCHOR_NS;
+    f.stop_after_heartbeats = 2;
+    script_light(&f, 2);
+    capture_config_proposed(&cfg, CAPTURE_SENSOR_LIGHT, 1, 0x23);
+    cfg.tick_period_ns = 120 * SEC;
+
+    assert(run_capture(&f, &cfg, log, &st) == CAPTURE_EXIT_STOPPED);
+    assert(f.samples == 2);
+    assert(f.file_bytes_after_sample[0] == 2 * STORAGE_RECORD_SIZE_BYTES);
+    assert(f.file_bytes_after_sample[1] == 3 * STORAGE_RECORD_SIZE_BYTES);
+    assert(capture_store_close(&st) == 0);
+    assert(read_records(CAPTURE_SENSOR_LIGHT, recs, COUNT_OF(recs)) == 3);
+    assert(fclose(log) == 0);
+    remove_temp();
+}
+
+/*
+ * test_shared_dir_separate_files: light and soil given the same directory
+ * by mistake still write separate files, so neither is mixed or refused.
+ */
+static void test_shared_dir_separate_files(void)
+{
+    static fake f;
+    static capture_store light;
+    static capture_store soil;
+    capture_env env = {fake_open, fake_read_clock, fake_sleep_until,
+                       fake_trust, fake_stop, NULL, 1};
+    capture_config light_cfg;
+    capture_config soil_cfg;
+    FILE *log = tmpfile();
+
+    assert(log != NULL);
+    assert(strcmp(log_name(CAPTURE_SENSOR_LIGHT),
+                  "SIMULATED-plant-light-0000000000000001.log") == 0);
+    assert(strcmp(capture_store_file_name(CAPTURE_SENSOR_SOIL, 0),
+                  "plant-soil-0000000000000001.log") == 0);
+    make_temp_dir();
+    memset(&f, 0, sizeof f);
+    f.now_ns = ANCHOR_NS;
+    env.ctx = &f;
+    capture_config_proposed(&light_cfg, CAPTURE_SENSOR_LIGHT, 1, 0x23);
+    capture_config_proposed(&soil_cfg, CAPTURE_SENSOR_SOIL, 1, 0x36);
+
+    /* Both open before either closes, as two processes started together. */
+    assert(capture_store_open(&light, log, temp_dir, &light_cfg, &env) == 0);
+    assert(capture_store_open(&soil, log, temp_dir, &soil_cfg, &env) == 0);
+    assert(capture_store_close(&light) == 0);
+    assert(capture_store_close(&soil) == 0);
+    assert(file_size(log_name(CAPTURE_SENSOR_LIGHT)) ==
+           STORAGE_RECORD_SIZE_BYTES);
+    assert(file_size(log_name(CAPTURE_SENSOR_SOIL)) ==
+           STORAGE_RECORD_SIZE_BYTES);
     assert(fclose(log) == 0);
     remove_temp();
 }
@@ -645,6 +748,8 @@ int main(void)
     test_light_end_to_end();
     test_soil_flushed_within_deadline();
     test_previous_log_refused();
+    test_long_tick_flushes_each_record();
+    test_shared_dir_separate_files();
     test_missing_dir();
 
     puts("SIMULATED capture store tests passed (scripted mock, fake clock; "

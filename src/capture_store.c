@@ -164,6 +164,46 @@ static int append(capture_store *st, const storage_record *rec,
     return err;
 }
 
+/*
+ * flush_ahead: flush the batch if its oldest record would be within the
+ * margin of the flush interval by the next heartbeat (see capture_store.h).
+ */
+static int flush_ahead(capture_store *st, int64_t now_ns, const char *op)
+{
+    size_t before = st->writer.buffered_records;
+    uint64_t ahead_ns = (uint64_t)st->tick_period_ns +
+                        (uint64_t)CAPTURE_STORE_FLUSH_MARGIN_NS;
+    uint64_t due_ns = (uint64_t)now_ns;
+    storage_log_result r;
+
+    if (before == 0) {
+        return 0;
+    }
+    due_ns = UINT64_MAX - due_ns >= ahead_ns ? due_ns + ahead_ns
+                                             : UINT64_MAX;
+    r = storage_log_flush_if_due(&st->writer, due_ns);
+    if (r.status != STORAGE_LOG_OK) {
+        return log_store_error(st, op, r);
+    }
+    if (st->writer.buffered_records == 0) {
+        return log_flushed(st, before, "deadline");
+    }
+    return 0;
+}
+
+/* capture_store_file_name: see capture_store.h. */
+const char *capture_store_file_name(capture_sensor sensor, int simulated)
+{
+    if (sensor == CAPTURE_SENSOR_LIGHT) {
+        return simulated ? STORAGE_LOG_SIMULATED_PREFIX
+                               CAPTURE_STORE_LIGHT_FILE_NAME
+                         : CAPTURE_STORE_LIGHT_FILE_NAME;
+    }
+    return simulated ? STORAGE_LOG_SIMULATED_PREFIX
+                           CAPTURE_STORE_SOIL_FILE_NAME
+                     : CAPTURE_STORE_SOIL_FILE_NAME;
+}
+
 /* capture_store_open: see capture_store.h. */
 int capture_store_open(capture_store *st, FILE *log, const char *dir_path,
                        const capture_config *cfg, const capture_env *env)
@@ -186,8 +226,7 @@ int capture_store_open(capture_store *st, FILE *log, const char *dir_path,
     st->sensor = cfg->sensor;
     st->simulated = env->is_simulated;
     st->tick_period_ns = cfg->tick_period_ns;
-    name = st->simulated ? CAPTURE_STORE_SIMULATED_FILE_NAME
-                         : CAPTURE_STORE_FILE_NAME;
+    name = capture_store_file_name(st->sensor, st->simulated);
 
     r = storage_log_open(&st->writer, dir_path, name, 1, st->simulated);
     if (r.status != STORAGE_LOG_OK) {
@@ -238,7 +277,11 @@ fail:
     return err;
 }
 
-/* capture_store_emit_sample: log the sample, then store it. */
+/*
+ * capture_store_emit_sample: log the sample, store it, then flush ahead.
+ * If the store's own clock read fails, the failure is logged and the
+ * sample's monotonic time is used instead, so the reading is not lost.
+ */
 int capture_store_emit_sample(void *ctx, const capture_sample *sample)
 {
     capture_store *st = ctx;
@@ -252,52 +295,40 @@ int capture_store_emit_sample(void *ctx, const capture_sample *sample)
     }
     err = read_ns(st->env, CAPTURE_CLOCK_MONOTONIC, &now_ns);
     if (err != 0) {
-        return log_clock_error(st, "append_clock", err);
+        if (sample->mono_errno != 0 || sample->mono_ns < 0) {
+            return log_clock_error(st, "append_clock", err);
+        }
+        (void)log_clock_error(st, "append_clock_using_sample_time", err);
+        now_ns = sample->mono_ns;
     }
     storage_record_from_sample(sample, st->writer.next_sequence, &rec);
-    return append(st, &rec, (uint64_t)now_ns);
+    err = append(st, &rec, (uint64_t)now_ns);
+    if (err != 0) {
+        return err;
+    }
+    return flush_ahead(st, now_ns, "flush_if_due");
 }
 
-/*
- * capture_store_emit_heartbeat: log the heartbeat, then flush the batch if
- * it would be overdue by the next tick's heartbeat.
- */
+/* capture_store_emit_heartbeat: log the heartbeat, then flush ahead. */
 int capture_store_emit_heartbeat(void *ctx,
                                  const capture_heartbeat *heartbeat)
 {
     capture_store *st = ctx;
-    storage_log_result r;
-    size_t before;
     int64_t now_ns;
-    uint64_t next_tick_ns;
     int err;
 
     err = capture_log_heartbeat(st->log, heartbeat);
     if (err != 0) {
         return err;
     }
-    before = st->writer.buffered_records;
-    if (before == 0) {
+    if (st->writer.buffered_records == 0) {
         return 0;
     }
     err = read_ns(st->env, CAPTURE_CLOCK_MONOTONIC, &now_ns);
     if (err != 0) {
         return log_clock_error(st, "flush_clock", err);
     }
-    next_tick_ns = (uint64_t)now_ns;
-    if (UINT64_MAX - next_tick_ns >= (uint64_t)st->tick_period_ns) {
-        next_tick_ns += (uint64_t)st->tick_period_ns;
-    } else {
-        next_tick_ns = UINT64_MAX;
-    }
-    r = storage_log_flush_if_due(&st->writer, next_tick_ns);
-    if (r.status != STORAGE_LOG_OK) {
-        return log_store_error(st, "flush_if_due", r);
-    }
-    if (st->writer.buffered_records == 0) {
-        return log_flushed(st, before, "deadline");
-    }
-    return 0;
+    return flush_ahead(st, now_ns, "flush_if_due");
 }
 
 /* capture_store_close: see capture_store.h. */

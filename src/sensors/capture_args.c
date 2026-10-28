@@ -206,10 +206,13 @@ static capture_args_result parse_args(int argc, char *const argv[],
         }
         parsed.sample_every_ticks = (uint32_t)v;
     }
-    if (store_dir != NULL &&
-        (value[OPT_STORE_DIR] == NULL || value[OPT_STORE_DIR][0] == '\0')) {
+    if (store_dir != NULL && value[OPT_STORE_DIR] == NULL) {
         fprintf(err, "%s: --store-dir is required (an existing "
                      "directory)\n", program);
+        return CAPTURE_ARGS_ERROR;
+    }
+    if (store_dir != NULL && value[OPT_STORE_DIR][0] == '\0') {
+        fprintf(err, "%s: --store-dir must not be empty\n", program);
         return CAPTURE_ARGS_ERROR;
     }
 

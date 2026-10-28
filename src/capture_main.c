@@ -1,9 +1,13 @@
+#define _POSIX_C_SOURCE 200809L
+
 #include "capture_store.h"
 #include "sensors/capture.h"
 #include "sensors/capture_args.h"
 #include "sensors/capture_linux.h"
 #include "sensors/capture_log.h"
 
+#include <errno.h>
+#include <signal.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -15,6 +19,25 @@
  *
  * TEMPORARY per-sensor storage until the hub exists; see capture_store.h.
  */
+
+/*
+ * ignore_sigpipe: a closed stdout reader then makes the log write fail
+ * with EPIPE (a logged sink failure, after which storage is still flushed
+ * and closed) instead of killing the process with buffered records.
+ * Returns 0 or the errno of the failed sigaction.
+ */
+static int ignore_sigpipe(void)
+{
+    struct sigaction sa;
+
+    memset(&sa, 0, sizeof sa);
+    sa.sa_handler = SIG_IGN;
+    if (sigemptyset(&sa.sa_mask) != 0 ||
+        sigaction(SIGPIPE, &sa, NULL) != 0) {
+        return errno != 0 ? errno : EINVAL;
+    }
+    return 0;
+}
 
 /* main: parse the arguments, open storage, capture until stopped. */
 int main(int argc, char **argv)
@@ -49,6 +72,12 @@ int main(int argc, char **argv)
         break;
     }
 
+    err = ignore_sigpipe();
+    if (err != 0) {
+        fprintf(stderr, "%s: ignoring SIGPIPE failed: %s\n", program,
+                strerror(err));
+        return 1;
+    }
     err = capture_linux_install_stop_handlers();
     if (err != 0) {
         fprintf(stderr, "%s: installing the stop handlers failed: %s\n",
@@ -57,9 +86,10 @@ int main(int argc, char **argv)
     }
     capture_linux_env(&env);
 
-    if (capture_store_open(&store, stdout, store_dir, &cfg, &env) != 0) {
-        fprintf(stderr, "%s: opening storage in '%s' failed; see the "
-                        "store_error line\n", program, store_dir);
+    err = capture_store_open(&store, stdout, store_dir, &cfg, &env);
+    if (err != 0) {
+        fprintf(stderr, "%s: opening storage in '%s' failed: %s\n",
+                program, store_dir, strerror(err));
         return 1;
     }
 
@@ -71,12 +101,16 @@ int main(int argc, char **argv)
 
     if (capture_log_exit(stdout, cfg.sensor, env.is_simulated,
                          &outcome) != 0) {
-        fprintf(stderr, "%s: writing the exit line failed\n", program);
+        /* stdout is broken, so the exit reason goes to stderr too. */
+        fprintf(stderr, "%s: writing the exit line failed; exit=%s "
+                        "errno=%d\n", program, capture_exit_name(result),
+                outcome.exit_errno);
         rc = 1;
     }
-    if (capture_store_close(&store) != 0) {
-        fprintf(stderr, "%s: closing storage failed; see the store_error "
-                        "line\n", program);
+    err = capture_store_close(&store);
+    if (err != 0) {
+        fprintf(stderr, "%s: closing storage failed: %s\n", program,
+                strerror(err));
         rc = 1;
     }
     return rc;

@@ -9,7 +9,7 @@
  * Command-line options for the future capture program: one program, run
  * as two processes (one per sensor). These options do not depend on the
  * capture-to-hub interface, which is not agreed yet, so there are no
- * output or socket options here.
+ * output or socket options here, apart from --store-dir below.
  *
  *   --sensor light|soil  required
  *   --bus N              required; no default, because init writes to the
@@ -19,6 +19,9 @@
  *   --tick-ms N          PROPOSED 10000; 100 to 3600000
  *   --every N            ticks between attempts; PROPOSED light 1, soil 6;
  *                        1 to 1000
+ *   --store-dir DIR      capture_parse_args_store only (required there):
+ *                        the TEMPORARY per-sensor storage directory, until
+ *                        the hub exists; capture_parse_args rejects it
  *   --help
  *
  * Numbers are decimal; addresses may also be hex (0x23). Options may not
@@ -47,7 +50,8 @@ capture_args_result capture_parse_args(int argc, char *const argv[],
  * --store-dir DIR, for plant-capture's TEMPORARY per-sensor storage (see
  * capture_store.h). On RUN *store_dir points into argv; otherwise *cfg and
  * *store_dir are untouched. capture_parse_args itself still rejects
- * --store-dir as an unknown argument.
+ * --store-dir as an unknown argument. As in capture_parse_args, NULL
+ * pointers (here also store_dir) return ERROR without printing.
  */
 capture_args_result capture_parse_args_store(int argc, char *const argv[],
                                              capture_config *cfg,
