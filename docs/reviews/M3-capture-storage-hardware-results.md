@@ -1,5 +1,9 @@
 # M3 hardware results: live capture to storage on the Raspberry Pi
 
+> **Update.** A fresh-context review of PR #20 found flush-timing, shared-directory and SIGPIPE issues. They were fixed in `d1b787c` and `29dcb71` and re-checked on the Pi; see "Re-check after the review fixes" at the end.
+>
+> The first run below was at `68c70de`. Its file names (`plant-0000000000000001.log`) and its light flush batches of 6 are from before those fixes.
+
 | Item | Value |
 |---|---|
 | Run | Evidence folder `run-20261028T211418Z` (UTC, from the Pi clock) |
@@ -68,3 +72,23 @@ The `store_flush` lines have no timestamps, so the saved files do not show each 
 - **Rates.** The capture rates are the PROPOSED defaults (10 s tick; light every tick, soil every 6th), not agreed requirements.
 - **Not established:** calibration, long-term stability (the 48-hour test), behaviour with a sensor disconnected while capturing, recovery after a crash, and hub-wide sequencing.
 - **Earlier run.** A preliminary folder from earlier the same day, `run-20261028T205455Z` (steps 2–4 on `main` at `8c9d661`, PASS 6/6), is kept privately and not summarized here.
+
+## Re-check after the review fixes
+
+Both runs use the same runbook format as the first. Raw evidence is kept privately as tarballs.
+
+| Run | Commit | Tarball SHA-256 |
+|---|---|---|
+| `run-20261028T213408Z` | `d1b787cfa0fd745380031bd636628adc924dd913` | `f9faf2e526921eeef7b44609764290c279d3dccb0c7fcac3aec8874b91e470cd` |
+| `run-20261028T214303Z` | `29dcb710cf0296b65d79a334a9595a8cebd43aff` (PR head) | `7aa1b31d580b0729927ccbd2e3616aa68333a686c16b20b49785dc292352ab1f` |
+
+| Step | Run | Exit | Observation (from the saved files) |
+|---|---|---|---|
+| build / test / asan / memcheck | both | 0 / 0 / 0 / 0 | All 13 test binaries passed, normally and under ASan and UBSan. Valgrind reported 0 errors in 13 of 13 runs. |
+| scan / basic | 213408Z | 0 / 0 | `0x23` and `0x36` present. `sensor-diag` `PASS 6/6`. |
+| cap-light / cap-soil (190 s) | 213408Z | 0 / 0 | Light 19/19 and soil 4/4 valid and stored; both dumps `PASS`, with 0 bad records and 0 sequence breaks. Empty stderr. No processes left running. Only fds 0–2, `/dev/i2c-1` and the process's own log were open. |
+| light flush batches | 213408Z | — | Batches of **5** on the deadline (they were 6 before the margin fix); soil records were flushed one at a time. |
+| cap-refuse | 213408Z | 1 | The second run was refused (`SEQUENCE`), and the log's SHA-256 was unchanged. |
+| cap-shared-light / -soil | 213408Z | 0 / 0 | Both started together in **one** directory, 30 s. They wrote separate files (`plant-light-…`: 3 light records, `plant-soil-…`: 1 soil record), and both dumps passed. |
+| cap-light / cap-soil (70 s) | 214303Z | 0 / 0 | Light 7/7 and soil 2/2 stored; both dumps `PASS`. |
+| cap-sigpipe | 214303Z | 1 | Piped into `head -n 7`. The reader exited while one light reading was stored but not yet flushed (`buffered=1`). The process was **not** killed by SIGPIPE: it exited 1 after the next write failed. Stderr says storage was flushed and closed and only the `store_close` line failed. `dump-sigpipe` shows START plus that light reading on disk, `PASS`. |
